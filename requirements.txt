@@ -1,0 +1,7 @@
+pydantic
+python-dotenv
+rich
+jinja2
+requests
+playwright
+beautifulsoup4

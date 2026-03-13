@@ -1,0 +1,66 @@
+[
+  {
+    "handle": "@alexrivera",
+    "author": "Alex Rivera",
+    "topic_hint": "enso",
+    "score": 94.0,
+    "priority": "alta",
+    "recommended_action": "reply",
+    "text": "The internet gave everyone access to culture, but it removed a lot of the structures that helped people understand it.",
+    "url": "https://x.com/example/1",
+    "drafts": {
+      "reply_1": "Access expanded faster than understanding. Rebuilding context feels like one of the most important digital problems now.",
+      "reply_2": "The archive got bigger. The map got weaker. That tension feels central to digital culture.",
+      "quote": "A lot of what interests me sits exactly here: not just access to culture, but better context around it.",
+      "new_post": "The internet made culture easier to reach, but harder to situate. Maybe the next layer is context, not just access."
+    }
+  },
+  {
+    "handle": "@designthread",
+    "author": "Design Thread",
+    "topic_hint": "enso",
+    "score": 89.17,
+    "priority": "alta",
+    "recommended_action": "reply",
+    "text": "A lot of digital products don’t have a design problem. They have a meaning problem.",
+    "url": "https://x.com/example/4",
+    "drafts": {
+      "reply_1": "Access expanded faster than understanding. Rebuilding context feels like one of the most important digital problems now.",
+      "reply_2": "The archive got bigger. The map got weaker. That tension feels central to digital culture.",
+      "quote": "A lot of what interests me sits exactly here: not just access to culture, but better context around it.",
+      "new_post": "The internet made culture easier to reach, but harder to situate. Maybe the next layer is context, not just access."
+    }
+  },
+  {
+    "handle": "@museumlens",
+    "author": "Museum Lens",
+    "topic_hint": "jano",
+    "score": 86.5,
+    "priority": "alta",
+    "recommended_action": "quote",
+    "text": "Museums should stop pretending to be neutral institutions.",
+    "url": "https://x.com/example/3",
+    "drafts": {
+      "reply_1": "That tension is part of what makes institutions worth examining: they don’t just preserve culture, they frame it.",
+      "reply_2": "Neutrality in cultural institutions has always been more complicated than it looks.",
+      "quote": "What interests me here is not just the institution, but the way meaning gets shaped through selection, display and context.",
+      "new_post": "Museums are not only archives. They are systems of interpretation."
+    }
+  },
+  {
+    "handle": "@minacole",
+    "author": "Mina Cole",
+    "topic_hint": "1710",
+    "score": 79.0,
+    "priority": "media",
+    "recommended_action": "quote",
+    "text": "Most people don’t need more ideas. They need better systems.",
+    "url": "https://x.com/example/2",
+    "drafts": {
+      "reply_1": "Strong ideas usually collapse inside weak systems.",
+      "reply_2": "A lot of creative work is really structure in disguise.",
+      "quote": "The gap between a good idea and a useful project is often system design.",
+      "new_post": "The internet doesn’t lack ideas. It lacks structure."
+    }
+  }
+]

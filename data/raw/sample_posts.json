@@ -1,0 +1,50 @@
+[
+  {
+    "author": "Alex Rivera",
+    "handle": "@alexrivera",
+    "text": "The internet gave everyone access to culture, but it removed a lot of the structures that helped people understand it.",
+    "url": "https://x.com/example/1",
+    "minutes_since_posted": 12,
+    "likes": 84,
+    "replies": 11,
+    "reposts": 6,
+    "topic_hint": "enso",
+    "author_priority": 8
+  },
+  {
+    "author": "Mina Cole",
+    "handle": "@minacole",
+    "text": "Most people don’t need more ideas. They need better systems.",
+    "url": "https://x.com/example/2",
+    "minutes_since_posted": 27,
+    "likes": 120,
+    "replies": 9,
+    "reposts": 15,
+    "topic_hint": "1710",
+    "author_priority": 7
+  },
+  {
+    "author": "Museum Lens",
+    "handle": "@museumlens",
+    "text": "Museums should stop pretending to be neutral institutions.",
+    "url": "https://x.com/example/3",
+    "minutes_since_posted": 9,
+    "likes": 210,
+    "replies": 73,
+    "reposts": 41,
+    "topic_hint": "jano",
+    "author_priority": 9
+  },
+  {
+    "author": "Design Thread",
+    "handle": "@designthread",
+    "text": "A lot of digital products don’t have a design problem. They have a meaning problem.",
+    "url": "https://x.com/example/4",
+    "minutes_since_posted": 18,
+    "likes": 67,
+    "replies": 7,
+    "reposts": 9,
+    "topic_hint": "enso",
+    "author_priority": 8
+  }
+]
