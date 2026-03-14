@@ -3,7 +3,6 @@ from datetime import datetime, timezone
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 from app.db import get_connection
 
-
 X_BASE = "https://x.com"
 
 
@@ -133,15 +132,17 @@ def collect_posts_for_handle(page, handle: str, limit: int = 5):
             reposts = extract_metric_from_aria(article, "retweet")
             likes = extract_metric_from_aria(article, "like")
 
-            results.append({
-                "handle": handle,
-                "text": text,
-                "url": tweet_url,
-                "minutes_since_posted": minutes_since_posted,
-                "likes": likes,
-                "replies": replies,
-                "reposts": reposts,
-            })
+            results.append(
+                {
+                    "handle": handle,
+                    "text": text,
+                    "url": tweet_url,
+                    "minutes_since_posted": minutes_since_posted,
+                    "likes": likes,
+                    "replies": replies,
+                    "reposts": reposts,
+                }
+            )
 
         except Exception as e:
             print(f"   ⚠️ error procesando tweet {i+1} de @{handle}: {e}")
@@ -191,25 +192,28 @@ def main():
             print(f"   → posts útiles extraídos: {len(posts)}")
 
             for post in posts:
-                cursor.execute("""
+                cursor.execute(
+                    """
                 INSERT OR IGNORE INTO posts (
                     author, handle, text, url,
                     minutes_since_posted, likes, replies, reposts,
                     topic_hint, author_priority
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    handle,
-                    f"@{handle}",
-                    post["text"],
-                    post["url"],
-                    post["minutes_since_posted"],
-                    post["likes"],
-                    post["replies"],
-                    post["reposts"],
-                    topic_hint,
-                    author_priority
-                ))
+                """,
+                    (
+                        handle,
+                        f"@{handle}",
+                        post["text"],
+                        post["url"],
+                        post["minutes_since_posted"],
+                        post["likes"],
+                        post["replies"],
+                        post["reposts"],
+                        topic_hint,
+                        author_priority,
+                    ),
+                )
 
                 if cursor.rowcount > 0:
                     inserted += 1

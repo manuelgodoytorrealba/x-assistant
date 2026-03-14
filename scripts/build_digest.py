@@ -31,7 +31,9 @@ def main():
     print("\n=== DAILY X DIGEST ===\n")
 
     for i, row in enumerate(rows, start=1):
-        print(f"[{i}] draft_id: {row['draft_id']} | {row['handle']} | score: {row['score']} | prioridad: {row['priority']}")
+        print(
+            f"[{i}] draft_id: {row['draft_id']} | {row['handle']} | score: {row['score']} | prioridad: {row['priority']}"
+        )
         print(f"tema: {row['topic_hint']} | acción: {row['recommended_action']}")
         print(f"post: {row['text']}")
         print("\n  reply_1:")

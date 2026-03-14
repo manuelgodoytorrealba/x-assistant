@@ -12,25 +12,28 @@ def main():
     inserted = 0
 
     for post in posts:
-        cursor.execute("""
+        cursor.execute(
+            """
         INSERT OR IGNORE INTO posts (
             author, handle, text, url,
             minutes_since_posted, likes, replies, reposts,
             topic_hint, author_priority
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            post["author"],
-            post["handle"],
-            post["text"],
-            post["url"],
-            post["minutes_since_posted"],
-            post["likes"],
-            post["replies"],
-            post["reposts"],
-            post["topic_hint"],
-            post["author_priority"]
-        ))
+        """,
+            (
+                post["author"],
+                post["handle"],
+                post["text"],
+                post["url"],
+                post["minutes_since_posted"],
+                post["likes"],
+                post["replies"],
+                post["reposts"],
+                post["topic_hint"],
+                post["author_priority"],
+            ),
+        )
 
         if cursor.rowcount > 0:
             inserted += 1

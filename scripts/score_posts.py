@@ -34,7 +34,8 @@ def main():
 
         scored = score_post(post)
 
-        cursor.execute("""
+        cursor.execute(
+            """
         UPDATE posts
         SET topic_relevance = ?,
             early_engagement = ?,
@@ -43,15 +44,17 @@ def main():
             recommended_action = ?,
             priority = ?
         WHERE id = ?
-        """, (
-            scored.topic_relevance,
-            scored.early_engagement,
-            scored.reply_potential,
-            scored.score,
-            scored.recommended_action,
-            scored.priority,
-            row["id"]
-        ))
+        """,
+            (
+                scored.topic_relevance,
+                scored.early_engagement,
+                scored.reply_potential,
+                scored.score,
+                scored.recommended_action,
+                scored.priority,
+                row["id"],
+            ),
+        )
 
         scored_count += 1
 

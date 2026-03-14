@@ -31,8 +31,12 @@ def main():
         return
 
     for row in rows:
-        print(f"feedback_id: {row['id']} | draft_id: {row['draft_id']} | {row['handle']}")
-        print(f"tipo: {row['draft_type']} | acción: {row['action']} | fecha: {row['created_at']}")
+        print(
+            f"feedback_id: {row['id']} | draft_id: {row['draft_id']} | {row['handle']}"
+        )
+        print(
+            f"tipo: {row['draft_type']} | acción: {row['action']} | fecha: {row['created_at']}"
+        )
         if row["notes"]:
             print(f"notas: {row['notes']}")
         print(f"post: {row['text']}")

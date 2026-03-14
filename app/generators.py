@@ -1,7 +1,10 @@
-from app.models import ScoredPost
-from app.context_loader import load_full_context
-from app.ollama_client import generate_json
+import random
+import re
+from difflib import SequenceMatcher
 
+from app.context_loader import load_full_context
+from app.models import ScoredPost
+from app.ollama_client import generate_json, generate_text
 
 BANNED_PATTERNS = [
     "#",
@@ -18,6 +21,218 @@ BANNED_PATTERNS = [
     "Interesting point",
     "interesting point",
 ]
+
+GENERIC_PHRASES = [
+    "context matters more than content",
+    "content matters more than aesthetics",
+    "design is not just about visuals",
+    "quality over buzz",
+    "interesting academic opening",
+    "documentation simplifies complexity",
+    "pkm tools matter more than ever",
+    "visuals deceive without meaning",
+    "great contrast",
+]
+
+LOW_SIGNAL_EXACT_TEXTS = {
+    "perfect",
+    "multimodal party game",
+    "differences in perceived speed",
+    "nfts, explained.",
+    "keep going.",
+    "the life of a designer",
+    "the countryside lock-in",
+    "retro · cover flow",
+    "telegram · header",
+}
+
+
+def clean_handle(handle: str) -> str:
+    return (handle or "").lstrip("@")
+
+
+def normalize_text(text: str) -> str:
+    text = (text or "").lower().strip()
+    text = re.sub(r"http\S+", "", text)
+    text = re.sub(r"@\w+", "", text)
+    text = re.sub(r"\s+", " ", text)
+    return text
+
+
+def similarity(a: str, b: str) -> float:
+    return SequenceMatcher(None, normalize_text(a), normalize_text(b)).ratio()
+
+
+def clean_text(value: str) -> str:
+    return (value or "").strip().replace("\n\n\n", "\n\n")
+
+
+def contains_banned_pattern(text: str) -> bool:
+    return any(pattern in text for pattern in BANNED_PATTERNS)
+
+
+def contains_generic_phrase(text: str) -> bool:
+    normalized = normalize_text(text)
+    return any(phrase in normalized for phrase in GENERIC_PHRASES)
+
+
+def is_too_short(text: str) -> bool:
+    words = [w for w in text.split() if w.strip()]
+    return len(words) < 5
+
+
+def is_too_similar_to_post(text: str, post_text: str) -> bool:
+    return similarity(text, post_text) >= 0.72
+
+
+def adds_new_information(text: str, post_text: str) -> bool:
+    draft_words = set(normalize_text(text).split())
+    post_words = set(normalize_text(post_text).split())
+    new_words = draft_words - post_words
+    meaningful_new_words = {w for w in new_words if len(w) > 4}
+    return len(meaningful_new_words) >= 2
+
+
+def is_bad_output(text: str, post_text: str = "") -> bool:
+    text = (text or "").strip()
+
+    if not text:
+        return True
+
+    if contains_banned_pattern(text):
+        return True
+
+    if contains_generic_phrase(text):
+        return True
+
+    if is_too_short(text):
+        return True
+
+    if post_text and is_too_similar_to_post(text, post_text):
+        return True
+
+    if post_text and not adds_new_information(text, post_text):
+        return True
+
+    return False
+
+
+def has_enough_text_substance(text: str) -> bool:
+    text = (text or "").strip()
+    if len(text) < 35:
+        return False
+
+    words = [w for w in re.split(r"\s+", text) if w.strip()]
+    return len(words) >= 6
+
+
+def looks_like_low_signal_post(text: str) -> bool:
+    normalized = normalize_text(text)
+
+    if normalized in LOW_SIGNAL_EXACT_TEXTS:
+        return True
+
+    if len(normalized) < 20:
+        return True
+
+    if len(normalized.split()) <= 4:
+        return True
+
+    return False
+
+
+def should_generate_for_post(post: ScoredPost) -> bool:
+    text = (post.text or "").strip()
+
+    if not text:
+        return False
+
+    if post.score is not None and post.score < 78:
+        return False
+
+    if looks_like_low_signal_post(text):
+        return False
+
+    if not has_enough_text_substance(text):
+        return False
+
+    return True
+
+
+def fallback_field(post: ScoredPost, field_name: str) -> str:
+    topic = (post.topic_hint or "").lower().strip()
+
+    fallback_pool = {
+        "enso": {
+            "reply_1": [
+                "Access scales faster than interpretation.",
+                "Abundance is easy. Orientation is harder.",
+                "The hard part starts once access is solved.",
+            ],
+            "reply_2": [
+                "A lot of digital abundance still depends on whether people can orient themselves inside it.",
+                "Distribution expanded quickly. Interpretation still lags behind.",
+                "The missing layer is often not content, but orientation inside it.",
+            ],
+            "quote": [
+                "Access scales fast. Context usually doesn't.",
+                "Abundance without orientation quickly becomes noise.",
+                "More access does not automatically produce more understanding.",
+            ],
+            "new_post": [
+                "The internet solved distribution faster than interpretation.",
+                "Abundance became cheap. Orientation didn't.",
+                "The bottleneck is no longer access. It is interpretation.",
+            ],
+        },
+        "jano": {
+            "reply_1": [
+                "What looks neutral is often just well-framed.",
+                "Neutrality often arrives already arranged.",
+                "A neutral surface can still hide a strong frame.",
+            ],
+            "reply_2": [
+                "Institutions shape meaning long before they explain it.",
+                "Selection and framing happen before interpretation becomes visible.",
+                "The framing layer usually starts working before the explanation does.",
+            ],
+            "quote": [
+                "Framing begins before interpretation does.",
+                "No institution simply shows. It selects first.",
+                "Selection is already a form of argument.",
+            ],
+            "new_post": [
+                "No institution simply displays. It always selects, arranges and frames.",
+                "Display is never neutral once selection has already happened.",
+                "Curation starts shaping meaning before explanation begins.",
+            ],
+        },
+        "1710": {
+            "reply_1": [
+                "Strong ideas still need structure to travel well.",
+                "A good idea still needs a system around it.",
+                "Execution usually breaks where structure is weak.",
+            ],
+            "reply_2": [
+                "A lot of execution problems are really structure problems in disguise.",
+                "What looks like inconsistency is often weak structure underneath.",
+                "Ideas fail less from ambition than from poor scaffolding.",
+            ],
+            "quote": [
+                "Without structure, good ideas leak energy.",
+                "A weak system can waste a strong idea.",
+                "Structure decides how far an idea can travel.",
+            ],
+            "new_post": [
+                "Most projects do not fail from lack of ideas. They fail from weak structure.",
+                "Execution becomes easier once the structure stops fighting the idea.",
+                "A lot of ambition gets lost inside weak systems.",
+            ],
+        },
+    }
+
+    topic_key = topic if topic in fallback_pool else "1710"
+    return random.choice(fallback_pool[topic_key][field_name])
 
 
 def get_topic_style_guide(topic_hint: str) -> str:
@@ -68,8 +283,8 @@ def build_prompt(post: ScoredPost) -> str:
     return f"""
 You are helping Manuel write thoughtful drafts for X.
 
-You are NOT a generic social media assistant.
-You are writing for a sharp, taste-driven project: 1710Studios.
+You are writing for 1710Studios, Ensō and Jano.
+The voice is sharp, human, restrained, observant and editorial.
 
 Return ONLY valid JSON with exactly these keys:
 {{
@@ -86,24 +301,38 @@ Hard rules:
 - No praise of the author
 - No flattery
 - No invented quotes
-- Do not start with "Agree", "Exactly", "Great point", "Interesting", or similar filler
 - Do not mention the author's handle unless truly necessary
-- Avoid generic LinkedIn-style writing
+- Do not repeat the tweet in cleaner words
+- Do not paraphrase the tweet unless you add a clear angle
+- Each draft must react to a specific tension, implication, contrast or blind spot in the post
+- Stay close to the actual post, not to generic brand themes
+- Avoid generic intellectual filler
+- Avoid generic social media filler
 - Avoid sounding like a growth coach
 - Avoid sounding like a brand account
-- Each draft must be specific to the post
-- Keep it concise, sharp and intentional
+- Avoid turning every post into a statement about archives, systems, context or meaning unless the post really supports it
 - Sound human, observant and tasteful
-- Prefer clarity, context and perspective over agreement
-- reply_1 = concise and direct
-- reply_2 = slightly more reflective
-- quote = standalone quote tweet draft
-- new_post = original post inspired by the same idea, not a paraphrase
+- Prefer specificity over abstraction
+- Prefer insight over agreement
+
+Bad outputs to avoid:
+- "Context matters more than content."
+- "Design is not just about visuals."
+- "Quality over buzz."
+- "Interesting academic opening."
+- "PKM tools matter more than ever."
+- "Visuals deceive without meaning."
+
+Field intent:
+- reply_1 = concise, natural, publishable reply
+- reply_2 = slightly more reflective, but still grounded in the post
+- quote = a quote tweet draft with its own angle
+- new_post = an original post inspired by the same idea, but more clearly yours
 
 Length guidance:
-- reply_1: 8 to 18 words
-- reply_2: 12 to 28 words
-- quote: 8 to 24 words
+- reply_1: 7 to 16 words
+- reply_2: 10 to 24 words
+- quote: 8 to 22 words
 - new_post: 1 to 3 short lines max
 
 Topic-specific guidance:
@@ -112,19 +341,19 @@ Topic-specific guidance:
 Examples of the kind of writing wanted:
 
 Good reply:
-"A lot of interfaces are polished but semantically empty."
+"The interface got easier. The underlying model got harder to see."
 
 Good reply:
-"We solved access faster than we solved orientation."
+"Access scales quickly. Interpretation usually doesn't."
 
 Good quote:
-"An archive without context is just accumulation."
+"Once context collapses, abundance stops feeling like richness."
 
 Good original post:
-"Polish became cheap. Meaning didn't."
+"Polish became cheap. Orientation didn't."
 
 Good original post:
-"Museums do not simply preserve meaning. They frame it."
+"A system becomes valuable when it helps you see, not just store."
 
 Brand context:
 {context}
@@ -141,42 +370,68 @@ Post text:
 """.strip()
 
 
-def clean_text(value: str) -> str:
-    return (value or "").strip().replace("\n\n\n", "\n\n")
+def build_retry_prompt(post: ScoredPost, field_name: str, bad_text: str) -> str:
+    return f"""
+Rewrite only one X draft field.
+
+Field:
+{field_name}
+
+Original tweet:
+\"\"\"{post.text}\"\"\"
+
+Previous weak output:
+\"\"\"{bad_text}\"\"\"
+
+Rules:
+- Write in English
+- Return only the rewritten text
+- No JSON
+- No hashtags
+- No emojis
+- No praise
+- No flattery
+- Do not paraphrase the tweet unless you add a clear angle
+- Be specific to the tweet
+- Avoid generic intellectual filler
+- Avoid vague abstractions unless the tweet clearly supports them
+- Keep it concise and natural
+- Make it sound human, not branded
+""".strip()
 
 
-def is_bad_output(text: str) -> bool:
-    if not text.strip():
-        return True
-    for pattern in BANNED_PATTERNS:
-        if pattern in text:
-            return True
-    return False
+def regenerate_field(post: ScoredPost, field_name: str, bad_text: str) -> str:
+    prompt = build_retry_prompt(post, field_name, bad_text)
+
+    try:
+        result = generate_text(prompt)
+        return clean_text(result)
+    except Exception as e:
+        print(
+            f"⚠️ Error regenerando {field_name} para @{clean_handle(post.handle)}: {e}"
+        )
+        return ""
 
 
-def fallback_drafts(post: ScoredPost) -> dict:
-    if post.topic_hint.lower() == "enso":
-        return {
-            "reply_1": "The problem is rarely access alone. It is access without enough context to make sense of what is being seen.",
-            "reply_2": "Digital culture expanded distribution faster than interpretation. That gap still feels unresolved.",
-            "quote": "The archive grew. Context thinned out.",
-            "new_post": "A lot of what the internet still lacks is not information, but orientation.",
-        }
+def repair_drafts(post: ScoredPost, drafts: dict) -> dict:
+    repaired = drafts.copy()
 
-    if post.topic_hint.lower() == "jano":
-        return {
-            "reply_1": "Institutions do not just preserve meaning. They shape it.",
-            "reply_2": "Neutrality in museums has always been less stable than the display language suggests.",
-            "quote": "Every institution frames before it explains.",
-            "new_post": "Museums are not neutral containers. They are systems of selection, framing and emphasis.",
-        }
+    for field_name, value in drafts.items():
+        if is_bad_output(value, post.text):
+            retry_value = regenerate_field(post, field_name, value)
 
-    return {
-        "reply_1": "Ideas without structure rarely travel far.",
-        "reply_2": "The gap is often not imagination, but the system required to carry it.",
-        "quote": "Strong ideas collapse inside weak systems.",
-        "new_post": "What most projects lack is not ambition, but structure.",
-    }
+            if retry_value and not is_bad_output(retry_value, post.text):
+                print(
+                    f"↻ Campo reparado para @{clean_handle(post.handle)}: {field_name}"
+                )
+                repaired[field_name] = retry_value
+            else:
+                print(
+                    f"↳ Fallback por campo para @{clean_handle(post.handle)}: {field_name}"
+                )
+                repaired[field_name] = fallback_field(post, field_name)
+
+    return repaired
 
 
 def generate_drafts(post: ScoredPost) -> dict:
@@ -192,12 +447,15 @@ def generate_drafts(post: ScoredPost) -> dict:
             "new_post": clean_text(result.get("new_post", "")),
         }
 
-        if any(is_bad_output(v) for v in drafts.values()):
-            print(f"⚠️ Output flojo detectado para {post.handle}. Usando fallback editorial.")
-            return fallback_drafts(post)
-
-        return drafts
+        return repair_drafts(post, drafts)
 
     except Exception as e:
-        print(f"⚠️ Error generando drafts con Ollama para {post.handle}: {e}")
-        return fallback_drafts(post)
+        print(
+            f"⚠️ Error generando drafts con Ollama para @{clean_handle(post.handle)}: {e}"
+        )
+        return {
+            "reply_1": fallback_field(post, "reply_1"),
+            "reply_2": fallback_field(post, "reply_2"),
+            "quote": fallback_field(post, "quote"),
+            "new_post": fallback_field(post, "new_post"),
+        }

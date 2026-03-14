@@ -1,6 +1,6 @@
 from app.db import get_connection
 from app.models import ScoredPost
-from app.generators import generate_drafts
+from app.generators import generate_drafts, should_generate_for_post
 
 
 def main():
@@ -17,14 +17,14 @@ def main():
            score, recommended_action, priority
     FROM posts
     WHERE score IS NOT NULL
+      AND score >= 78
     ORDER BY score DESC
     """)
 
     rows = cursor.fetchall()
+    selected_rows = []
 
-    for index, row in enumerate(rows, start=1):
-        print(f"▶ Generando drafts para {row['handle']} ({index}/{len(rows)})")
-
+    for row in rows:
         post = ScoredPost(
             author=row["author"],
             handle=row["handle"],
@@ -44,20 +44,32 @@ def main():
             priority=row["priority"],
         )
 
+        if should_generate_for_post(post):
+            selected_rows.append((row, post))
+        else:
+            print(f"⏭ Omitido @{post.handle}: poco material editorial")
+
+    for index, (row, post) in enumerate(selected_rows, start=1):
+        handle = (row["handle"] or "").lstrip("@")
+        print(f"▶ Generando drafts para @{handle} ({index}/{len(selected_rows)})")
+
         drafts = generate_drafts(post)
 
-        cursor.execute("""
+        cursor.execute(
+            """
         INSERT INTO drafts (
             post_id, reply_1, reply_2, quote, new_post
         )
         VALUES (?, ?, ?, ?, ?)
-        """, (
-            row["id"],
-            drafts["reply_1"],
-            drafts["reply_2"],
-            drafts["quote"],
-            drafts["new_post"]
-        ))
+        """,
+            (
+                row["id"],
+                drafts["reply_1"],
+                drafts["reply_2"],
+                drafts["quote"],
+                drafts["new_post"],
+            ),
+        )
 
     conn.commit()
     conn.close()
