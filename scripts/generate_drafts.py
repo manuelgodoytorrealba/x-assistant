@@ -1,6 +1,6 @@
 from app.db import get_connection
 from app.models import ScoredPost
-from app.generators import generate_drafts, should_generate_for_post
+from app.generators import generate_drafts, get_skip_reason
 
 
 def main():
@@ -9,7 +9,8 @@ def main():
 
     cursor.execute("DELETE FROM drafts")
 
-    cursor.execute("""
+    cursor.execute(
+        """
     SELECT id, author, handle, text, url,
            minutes_since_posted, likes, replies, reposts,
            topic_hint, author_priority,
@@ -17,9 +18,11 @@ def main():
            score, recommended_action, priority
     FROM posts
     WHERE score IS NOT NULL
-      AND score >= 78
+      AND score >= 65
+      AND recommended_action IN ('reply', 'quote', 'consider')
     ORDER BY score DESC
-    """)
+    """
+    )
 
     rows = cursor.fetchall()
     selected_rows = []
@@ -44,10 +47,13 @@ def main():
             priority=row["priority"],
         )
 
-        if should_generate_for_post(post):
+        handle = (row["handle"] or "").lstrip("@")
+        reason = get_skip_reason(post)
+
+        if reason is None:
             selected_rows.append((row, post))
         else:
-            print(f"⏭ Omitido @{post.handle}: poco material editorial")
+            print(f"⏭ Omitido @{handle}: {reason}")
 
     for index, (row, post) in enumerate(selected_rows, start=1):
         handle = (row["handle"] or "").lstrip("@")
@@ -57,11 +63,11 @@ def main():
 
         cursor.execute(
             """
-        INSERT INTO drafts (
-            post_id, reply_1, reply_2, quote, new_post
-        )
-        VALUES (?, ?, ?, ?, ?)
-        """,
+            INSERT INTO drafts (
+                post_id, reply_1, reply_2, quote, new_post
+            )
+            VALUES (?, ?, ?, ?, ?)
+            """,
             (
                 row["id"],
                 drafts["reply_1"],

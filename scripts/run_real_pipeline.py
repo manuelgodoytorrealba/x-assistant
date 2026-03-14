@@ -8,6 +8,7 @@ def run(script_name: str):
 
 def main():
     run("scripts/init_db.py")
+    run("scripts/reset_runtime_data.py")
     run("scripts/fetch_tweets.py")
     run("scripts/score_posts.py")
     run("scripts/generate_drafts.py")

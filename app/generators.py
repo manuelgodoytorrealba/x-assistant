@@ -6,6 +6,7 @@ from app.context_loader import load_full_context
 from app.models import ScoredPost
 from app.ollama_client import generate_json, generate_text
 
+
 BANNED_PATTERNS = [
     "#",
     "🔥",
@@ -64,7 +65,12 @@ def similarity(a: str, b: str) -> float:
 
 
 def clean_text(value: str) -> str:
-    return (value or "").strip().replace("\n\n\n", "\n\n")
+    text = (value or "").strip()
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = text.replace('"""', '"').replace("'''", "'")
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
 
 
 def contains_banned_pattern(text: str) -> bool:
@@ -78,7 +84,7 @@ def contains_generic_phrase(text: str) -> bool:
 
 def is_too_short(text: str) -> bool:
     words = [w for w in text.split() if w.strip()]
-    return len(words) < 5
+    return len(words) < 4
 
 
 def is_too_similar_to_post(text: str, post_text: str) -> bool:
@@ -91,6 +97,95 @@ def adds_new_information(text: str, post_text: str) -> bool:
     new_words = draft_words - post_words
     meaningful_new_words = {w for w in new_words if len(w) > 4}
     return len(meaningful_new_words) >= 2
+
+
+def has_fake_quote_format(text: str) -> bool:
+    stripped = text.strip()
+
+    if stripped.startswith('"') and stripped.endswith('"'):
+        return True
+
+    if stripped.startswith("'") and stripped.endswith("'"):
+        return True
+
+    if stripped.startswith("“") and stripped.endswith("”"):
+        return True
+
+    if "— @" in stripped or "- @" in stripped:
+        return True
+
+    if "— " in stripped and len(stripped.split("—")[-1].strip().split()) <= 3:
+        return True
+
+    if " - " in stripped and len(stripped.split(" - ")[-1].strip().split()) <= 3:
+        return True
+
+    return False
+
+
+def has_suspicious_attribution(text: str) -> bool:
+    lowered = normalize_text(text)
+
+    suspicious_patterns = [
+        "- socrates",
+        "— socrates",
+        "- plato",
+        "— plato",
+        "- aristotle",
+        "— aristotle",
+        "- nietzsche",
+        "— nietzsche",
+        "- kafka",
+        "— kafka",
+        "- john zerzan",
+        "— john zerzan",
+        "- marshall mcluhan",
+        "— marshall mcluhan",
+        "- alan kay",
+        "— alan kay",
+    ]
+
+    return any(pattern in lowered for pattern in suspicious_patterns)
+
+
+def is_overly_literal_reply(text: str, post_text: str) -> bool:
+    if not post_text:
+        return False
+
+    norm_text = normalize_text(text)
+    norm_post = normalize_text(post_text)
+
+    if norm_text in norm_post:
+        return True
+
+    if similarity(text, post_text) >= 0.82:
+        return True
+
+    return False
+
+
+def has_ai_sounding_abstraction(text: str) -> bool:
+    lowered = normalize_text(text)
+
+    weak_patterns = [
+        "true design excellence",
+        "transformative power",
+        "foundational elements falter",
+        "underlying principles",
+        "revealing hidden layers",
+        "redefines the narrative",
+        "intellectual landscape",
+        "coherent action",
+        "making ideas actionable",
+        "the essence of human thought",
+        "human context still matter",
+        "the value lies in",
+        "will matter in an ai-driven world",
+        "the true value lies",
+        "subtly but profoundly",
+    ]
+
+    return any(pattern in lowered for pattern in weak_patterns)
 
 
 def is_bad_output(text: str, post_text: str = "") -> bool:
@@ -108,7 +203,19 @@ def is_bad_output(text: str, post_text: str = "") -> bool:
     if is_too_short(text):
         return True
 
+    if has_fake_quote_format(text):
+        return True
+
+    if has_suspicious_attribution(text):
+        return True
+
+    if has_ai_sounding_abstraction(text):
+        return True
+
     if post_text and is_too_similar_to_post(text, post_text):
+        return True
+
+    if post_text and is_overly_literal_reply(text, post_text):
         return True
 
     if post_text and not adds_new_information(text, post_text):
@@ -119,11 +226,37 @@ def is_bad_output(text: str, post_text: str = "") -> bool:
 
 def has_enough_text_substance(text: str) -> bool:
     text = (text or "").strip()
-    if len(text) < 35:
+    if not text:
         return False
 
     words = [w for w in re.split(r"\s+", text) if w.strip()]
-    return len(words) >= 6
+    lower = text.lower()
+
+    # Tweets largos normales
+    if len(text) >= 35 and len(words) >= 6:
+        return True
+
+    # Permitir aforismos / tesis cortas pero potentes
+    strong_short_tokens = [
+        "ai",
+        "software",
+        "market",
+        "future",
+        "system",
+        "design",
+        "technology",
+        "internet",
+        "tools",
+        "moat",
+        "moats",
+        "vendor",
+        "lock-in",
+    ]
+
+    if len(text) >= 15 and any(token in lower for token in strong_short_tokens):
+        return True
+
+    return False
 
 
 def looks_like_low_signal_post(text: str) -> bool:
@@ -142,27 +275,15 @@ def looks_like_low_signal_post(text: str) -> bool:
 
 
 def should_generate_for_post(post: ScoredPost) -> bool:
-    text = (post.text or "").strip()
-
-    if not text:
-        return False
-
-    if post.score is not None and post.score < 78:
-        return False
-
-    if looks_like_low_signal_post(text):
-        return False
-
-    if not has_enough_text_substance(text):
-        return False
-
-    return True
+    return get_skip_reason(post) is None
 
 
 def fallback_field(post: ScoredPost, field_name: str) -> str:
     topic = (post.topic_hint or "").lower().strip()
+    text = (post.text or "").lower()
 
     fallback_pool = {
+        # ENSŌ = cultura digital / internet / sentido / archivo / PKM
         "enso": {
             "reply_1": [
                 "Access scales faster than interpretation.",
@@ -185,6 +306,7 @@ def fallback_field(post: ScoredPost, field_name: str) -> str:
                 "The bottleneck is no longer access. It is interpretation.",
             ],
         },
+        # JANO = arte / museos / instituciones / framing / memoria / curaduría
         "jano": {
             "reply_1": [
                 "What looks neutral is often just well-framed.",
@@ -207,6 +329,7 @@ def fallback_field(post: ScoredPost, field_name: str) -> str:
                 "Curation starts shaping meaning before explanation begins.",
             ],
         },
+        # 1710 GENERAL = sistemas / ejecución / estructura
         "1710": {
             "reply_1": [
                 "Strong ideas still need structure to travel well.",
@@ -229,16 +352,89 @@ def fallback_field(post: ScoredPost, field_name: str) -> str:
                 "A lot of ambition gets lost inside weak systems.",
             ],
         },
+        # 1710 AI / SOFTWARE / MARKET
+        "1710_ai_software": {
+            "reply_1": [
+                "The moat shifts once intelligence becomes infrastructure.",
+                "When intelligence gets cheaper, distribution matters more.",
+                "AI compresses the value of software into thinner layers.",
+            ],
+            "reply_2": [
+                "As AI lowers implementation cost, advantage shifts toward workflow, trust and distribution.",
+                "Software stops being the moat once intelligence becomes widely embedded.",
+                "When intelligence spreads across the stack, value moves upward.",
+            ],
+            "quote": [
+                "AI does not remove moats. It relocates them.",
+                "When intelligence gets cheaper, the moat moves higher in the stack.",
+                "The software layer gets thinner when intelligence becomes infrastructure.",
+            ],
+            "new_post": [
+                "When intelligence becomes cheap, the moat moves from code to distribution.",
+                "AI compresses the software layer and expands the value of workflow and trust.",
+                "The real shift with AI is not capability. It is where value accumulates.",
+            ],
+        },
     }
 
-    topic_key = topic if topic in fallback_pool else "1710"
+    if topic == "1710":
+        topic_key = detect_1710_subtopic(text)
+    else:
+        topic_key = topic if topic in fallback_pool else "1710"
+
     return random.choice(fallback_pool[topic_key][field_name])
 
 
-def get_topic_style_guide(topic_hint: str) -> str:
-    topic = (topic_hint or "").lower().strip()
+def detect_1710_subtopic(text: str) -> str:
+    lower = (text or "").lower()
 
-    if topic == "enso":
+    ai_software_keywords = [
+        "ai",
+        "software",
+        "moat",
+        "moats",
+        "market",
+        "vendor",
+        "lock-in",
+        "lockin",
+        "tool",
+        "tools",
+        "model",
+        "models",
+        "automation",
+        "workflow",
+        "distribution",
+        "interface",
+        "code",
+        "product",
+        "api",
+        "apis",
+        "agent",
+        "agents",
+        "stack",
+        "platform",
+        "platforms",
+    ]
+
+    if any(word in lower for word in ai_software_keywords):
+        return "1710_ai_software"
+
+    return "1710"
+
+
+def get_effective_subtopic(post: ScoredPost) -> str:
+    topic = (post.topic_hint or "").lower().strip()
+
+    if topic == "1710":
+        return detect_1710_subtopic(post.text)
+
+    return topic
+
+
+def get_topic_style_guide(post: ScoredPost) -> str:
+    subtopic = get_effective_subtopic(post)
+
+    if subtopic == "enso":
         return """
 Topic style guide for Ensō:
 - Focus on digital culture, systems of meaning, context, curation, interface, archive, internet culture
@@ -250,18 +446,34 @@ Topic style guide for Ensō:
 - Avoid generic design praise
 - Prefer conceptual tension over summary
 - A good Ensō draft should feel like it reveals a hidden structure in the idea
+- Good replies often contrast access vs interpretation, abundance vs orientation, interface vs meaning
 """.strip()
 
-    if topic == "jano":
+    if subtopic == "jano":
         return """
 Topic style guide for Jano:
-- Focus on institutions, framing, interpretation, selection, display, authority, archives, memory, visual culture
+- Focus on art, institutions, framing, interpretation, selection, display, authority, archives, memory, visual culture
 - Replies should feel interpretive, not moralizing
-- Good words and concepts: framing, selection, interpretation, institutional voice, display, authority, historical context
+- Good words and concepts: framing, selection, interpretation, institutional voice, display, authority, historical context, curatorship
 - Avoid generic praise of museums or art
 - Avoid sounding ideological for the sake of it
 - Prefer insight about how meaning is shaped, organized or mediated
-- A good Jano draft should make the reader see the institution or artwork differently
+- A good Jano draft should make the reader see the institution, artwork or act of display differently
+- Good replies often point to framing, curatorial choice, institutional voice, historical arrangement
+""".strip()
+
+    if subtopic == "1710_ai_software":
+        return """
+Topic style guide for 1710Studios / AI / software / market:
+- Focus on software, AI, markets, distribution, workflow, product layers, interfaces, incentives, moats, infrastructure
+- Sound sharp, strategic and grounded
+- Good words and concepts: moat, distribution, workflow, stack, infrastructure, interface, implementation, trust, market structure, aggregation
+- Prefer concrete shifts in value, not vague philosophy
+- Avoid generic "humanity vs AI" language
+- Avoid "context still matters" unless directly justified by the tweet
+- Avoid abstract motivational language
+- A good draft should identify where value is moving: from code to distribution, from implementation to workflow, from product to interface, from software to infrastructure
+- Good replies often point to changing moats, thinner software layers, cheaper implementation, and higher-level distribution advantages
 """.strip()
 
     return """
@@ -278,7 +490,70 @@ Topic style guide for 1710Studios general:
 
 def build_prompt(post: ScoredPost) -> str:
     context = load_full_context()
-    topic_style = get_topic_style_guide(post.topic_hint)
+    topic_style = get_topic_style_guide(post)
+    effective_subtopic = get_effective_subtopic(post)
+
+    extra_examples = ""
+
+    if effective_subtopic == "1710_ai_software":
+        extra_examples = """
+Examples especially relevant here:
+
+Good reply:
+"The moat moves up the stack once implementation gets cheaper."
+
+Good reply:
+"AI makes software easier to build, not easier to defend."
+
+Good quote:
+"When intelligence gets cheaper, distribution matters more."
+
+Good original post:
+"AI doesn't kill moats. It relocates them."
+
+Good original post:
+"As implementation gets commoditized, workflow becomes the product."
+""".strip()
+
+    elif effective_subtopic == "jano":
+        extra_examples = """
+Examples especially relevant here:
+
+Good reply:
+"What looks neutral is usually just well-arranged."
+
+Good reply:
+"Display is already a form of interpretation."
+
+Good quote:
+"Institutions shape attention before they shape memory."
+
+Good original post:
+"A museum does not simply preserve culture. It frames it."
+
+Good original post:
+"Selection is not neutral just because it is quiet."
+""".strip()
+
+    elif effective_subtopic == "enso":
+        extra_examples = """
+Examples especially relevant here:
+
+Good reply:
+"The interface got easier. The underlying model got harder to see."
+
+Good reply:
+"Abundance scales faster than interpretation."
+
+Good quote:
+"Once context collapses, access stops feeling like richness."
+
+Good original post:
+"Abundance became cheap. Orientation didn't."
+
+Good original post:
+"The archive grows faster than the reader's ability to navigate it."
+""".strip()
 
     return f"""
 You are helping Manuel write thoughtful drafts for X.
@@ -314,6 +589,9 @@ Hard rules:
 - Sound human, observant and tasteful
 - Prefer specificity over abstraction
 - Prefer insight over agreement
+- If the post is about AI/software/markets, speak in terms of value shift, moats, workflow, distribution, product layers or infrastructure
+- If the post is about art/institutions, speak in terms of framing, display, authority, curation or interpretation
+- If the post is about digital culture/internet/interface, speak in terms of orientation, meaning, archive, interface or context
 
 Bad outputs to avoid:
 - "Context matters more than content."
@@ -322,6 +600,8 @@ Bad outputs to avoid:
 - "Interesting academic opening."
 - "PKM tools matter more than ever."
 - "Visuals deceive without meaning."
+- "Human context still matters."
+- "The essence of human thought still matters."
 
 Field intent:
 - reply_1 = concise, natural, publishable reply
@@ -335,10 +615,13 @@ Length guidance:
 - quote: 8 to 22 words
 - new_post: 1 to 3 short lines max
 
+Effective subtopic:
+{effective_subtopic}
+
 Topic-specific guidance:
 {topic_style}
 
-Examples of the kind of writing wanted:
+General examples of the kind of writing wanted:
 
 Good reply:
 "The interface got easier. The underlying model got harder to see."
@@ -355,15 +638,19 @@ Good original post:
 Good original post:
 "A system becomes valuable when it helps you see, not just store."
 
+{extra_examples}
+
 Brand context:
 {context}
 
 Post metadata:
 - topic_hint: {post.topic_hint}
+- effective_subtopic: {effective_subtopic}
 - recommended_action: {post.recommended_action}
 - priority: {post.priority}
 - author: {post.author}
 - handle: {post.handle}
+- url: {post.url}
 
 Post text:
 \"\"\"{post.text}\"\"\"
@@ -391,12 +678,17 @@ Rules:
 - No emojis
 - No praise
 - No flattery
-- Do not paraphrase the tweet unless you add a clear angle
-- Be specific to the tweet
-- Avoid generic intellectual filler
-- Avoid vague abstractions unless the tweet clearly supports them
+- No invented quotes
+- No fake attribution
+- Do not add author handles
+- Do not add philosopher names
+- Do not wrap the answer in quotation marks
+- Do not sound like a thought-leadership post
+- Avoid generic "humanity / context / essence" language
+- Be concrete and specific to the tweet
+- Prefer market, software, product, systems, distribution, incentives, lock-in, interface, execution
 - Keep it concise and natural
-- Make it sound human, not branded
+- Make it sound human, sharp and grounded
 """.strip()
 
 
@@ -459,3 +751,25 @@ def generate_drafts(post: ScoredPost) -> dict:
             "quote": fallback_field(post, "quote"),
             "new_post": fallback_field(post, "new_post"),
         }
+
+
+def get_skip_reason(post: ScoredPost):
+    text = (post.text or "").strip()
+
+    if not text:
+        return "sin texto"
+
+    # Alineado con score_posts.py: hasta 7 días
+    if post.minutes_since_posted is not None and post.minutes_since_posted > 10080:
+        return f"demasiado viejo ({post.minutes_since_posted} min)"
+
+    # No volver a filtrar por score aquí.
+    # El score ya se filtra en generate_drafts.py con SQL.
+
+    if looks_like_low_signal_post(text):
+        return "post de baja señal"
+
+    if not has_enough_text_substance(text):
+        return "sin suficiente sustancia"
+
+    return None
