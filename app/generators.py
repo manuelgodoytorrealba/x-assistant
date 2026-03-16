@@ -6,7 +6,6 @@ from app.context_loader import load_full_context
 from app.models import ScoredPost
 from app.ollama_client import generate_json, generate_text
 
-
 BANNED_PATTERNS = [
     "#",
     "🔥",
@@ -33,6 +32,140 @@ GENERIC_PHRASES = [
     "pkm tools matter more than ever",
     "visuals deceive without meaning",
     "great contrast",
+    "seasonality matters in marketing",
+    "optimizing release timing for impact",
+    "track user satisfaction metrics",
+    "repeat business",
+    "brand exposure",
+    "luxury materials in modern designs",
+    "strategic use of music",
+    "emerging talent impacts the ecosystem",
+    "how do unconventional choices impact brand perception",
+    "tune in now",
+    "live updates and exclusive music",
+    "new metals collection launched today",
+    "tickets to philly await",
+    "elevating eyewear with premium materials",
+    "for more",
+    "perfect for the season",
+    "high-end materials",
+    "limited edition launch",
+    "now available",
+    "don't miss",
+    "dont miss",
+    "stay tuned",
+    "premium eyewear",
+    "exclusive music",
+    "tickets to",
+    "new collection",
+    "live updates",
+    "limited drop",
+    "available now",
+    "shop now",
+    "tap in",
+    "out now",
+    "coming soon",
+    "must-have",
+    "elevating your",
+    "crafted for",
+    "designed for",
+    "customer satisfaction",
+    "launch cycles",
+    "product launch",
+    "marketing strategy",
+    "brand strategy",
+    "business growth",
+]
+
+PROMO_PATTERNS = [
+    r"\bnow available\b",
+    r"\bdon[’']?t miss\b",
+    r"\bstay tuned\b",
+    r"\bshop now\b",
+    r"\bout now\b",
+    r"\bcoming soon\b",
+    r"\blimited edition\b",
+    r"\blimited drop\b",
+    r"\bnew collection\b",
+    r"\btickets to\b",
+    r"\blive updates\b",
+    r"\bperfect for\b",
+    r"\bpremium materials?\b",
+    r"\bhigh-end materials?\b",
+    r"\bexclusive music\b",
+    r"\belevating\b",
+    r"\bfor more\b",
+    r"\bmust-have\b",
+    r"\bcrafted for\b",
+    r"\bdesigned for\b",
+]
+
+CORPORATE_OR_ACADEMIC_PATTERNS = [
+    r"\bsynergy\b",
+    r"\binnovation\b",
+    r"\bvisibility\b",
+    r"\bmomentum\b",
+    r"\bbrand enthusiasm\b",
+    r"\bbrand excitement\b",
+    r"\bcustomer joy\b",
+    r"\bcustomer satisfaction\b",
+    r"\bgenuine feedback\b",
+    r"\bgenuine sentiment\b",
+    r"\bstrategic implication\b",
+    r"\bstrategic\b",
+    r"\bmarketing\b",
+    r"\bconsumer\b",
+    r"\bcustomer\b",
+    r"\bstatement piece\b",
+    r"\bintersection of\b",
+    r"\bredefine\b",
+    r"\bcutting-edge\b",
+    r"\bunique aesthetic experience\b",
+    r"\bvisual strategies\b",
+    r"\bvalue reevaluation\b",
+    r"\bworth noting\b",
+    r"\btrue strength lies in\b",
+    r"\bdivine judgment\b",
+    r"\bexplore the\b",
+    r"\bhow [a-z\s]+ captures\b",
+    r"\bthe interplay of\b",
+    r"\bthe tension between\b",
+    r"\ba fresh lens on\b",
+    r"\badds unexpected depth\b",
+    r"\badds depth\b",
+    r"\bfleeting beauty\b",
+    r"\bbeauty in the momentary\b",
+    r"\bshape culture\b",
+    r"\brepeat visit\b",
+    r"\bmasked in casual approval\b",
+    r"\bshift in agency and identity\b",
+    r"\bnot just\b",
+    r"\bmatters in\b",
+    r"\bcan make or break\b",
+    r"\boptimize for\b",
+    r"\bpeaks in\b",
+    r"\breveal membership codes\b",
+]
+
+MARKETING_VERB_PATTERNS = [
+    r"\bhighlight(?:ing)?\b",
+    r"\bexplore\b",
+    r"\bcapture the\b",
+    r"\buse urgency\b",
+    r"\bdrive awareness\b",
+    r"\bdrive interest\b",
+    r"\bdrive visibility\b",
+    r"\bredefine(?:s|d)?\b",
+    r"\bchallenge(?:s|d)?\b",
+    r"\bposition(?:s|ed)?\b",
+    r"\bframe(?:s|d)? as\b",
+    r"\belevate(?:s|d)?\b",
+    r"\bsignal(?:s|ed)? user satisfaction\b",
+    r"\bemphasize(?:s|d)?\b",
+    r"\bshow(?:s|ing)? trust and satisfaction\b",
+    r"\breinforc(?:e|es|ed)\b",
+    r"\bhold the key\b",
+    r"\bgame-changer\b",
 ]
 
 LOW_SIGNAL_EXACT_TEXTS = {
@@ -46,6 +179,29 @@ LOW_SIGNAL_EXACT_TEXTS = {
     "retro · cover flow",
     "telegram · header",
 }
+
+SUSPICIOUS_ATTRIBUTION_NAMES = [
+    "socrates",
+    "plato",
+    "aristotle",
+    "nietzsche",
+    "kafka",
+    "john zerzan",
+    "marshall mcluhan",
+    "alan kay",
+    "elon musk",
+    "steve jobs",
+    "picasso",
+    "warhol",
+    "kanye",
+    "virgil",
+]
+
+LATIN_CHAR_RE = re.compile(r"[A-Za-zÀ-ÿ]")
+CYRILLIC_RE = re.compile(r"[\u0400-\u04FF]")
+CJK_RE = re.compile(r"[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]")
+HIRAGANA_KATAKANA_RE = re.compile(r"[\u3040-\u30FF]")
+HANGUL_RE = re.compile(r"[\uAC00-\uD7AF]")
 
 
 def clean_handle(handle: str) -> str:
@@ -69,7 +225,8 @@ def clean_text(value: str) -> str:
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = text.replace('"""', '"').replace("'''", "'")
     text = re.sub(r"\n{3,}", "\n\n", text)
-    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r" *\n *", "\n", text).strip()
     return text
 
 
@@ -80,6 +237,11 @@ def contains_banned_pattern(text: str) -> bool:
 def contains_generic_phrase(text: str) -> bool:
     normalized = normalize_text(text)
     return any(phrase in normalized for phrase in GENERIC_PHRASES)
+
+
+def contains_promo_language(text: str) -> bool:
+    normalized = normalize_text(text)
+    return any(re.search(pattern, normalized) for pattern in PROMO_PATTERNS)
 
 
 def is_too_short(text: str) -> bool:
@@ -100,7 +262,10 @@ def adds_new_information(text: str, post_text: str) -> bool:
 
 
 def has_fake_quote_format(text: str) -> bool:
-    stripped = text.strip()
+    stripped = (text or "").strip()
+
+    if not stripped:
+        return False
 
     if stripped.startswith('"') and stripped.endswith('"'):
         return True
@@ -111,13 +276,28 @@ def has_fake_quote_format(text: str) -> bool:
     if stripped.startswith("“") and stripped.endswith("”"):
         return True
 
+    if stripped.startswith("‘") and stripped.endswith("’"):
+        return True
+
     if "— @" in stripped or "- @" in stripped:
         return True
 
-    if "— " in stripped and len(stripped.split("—")[-1].strip().split()) <= 3:
+    if re.search(r'[“"][^"\n]{6,}[”"]\s*(?:—|-)\s*\w+', stripped):
         return True
 
-    if " - " in stripped and len(stripped.split(" - ")[-1].strip().split()) <= 3:
+    if re.search(
+        r"(?:^|\s)(?:once said|once warned|said:|wrote:|according to)\b",
+        normalize_text(stripped),
+    ):
+        return True
+
+    if "— " in stripped and len(stripped.split("—")[-1].strip().split()) <= 4:
+        return True
+
+    if " - " in stripped and len(stripped.split(" - ")[-1].strip().split()) <= 4:
+        return True
+
+    if re.search(r'^[\'"`“].+[\'"`”]\.?$', stripped):
         return True
 
     return False
@@ -126,26 +306,22 @@ def has_fake_quote_format(text: str) -> bool:
 def has_suspicious_attribution(text: str) -> bool:
     lowered = normalize_text(text)
 
-    suspicious_patterns = [
-        "- socrates",
-        "— socrates",
-        "- plato",
-        "— plato",
-        "- aristotle",
-        "— aristotle",
-        "- nietzsche",
-        "— nietzsche",
-        "- kafka",
-        "— kafka",
-        "- john zerzan",
-        "— john zerzan",
-        "- marshall mcluhan",
-        "— marshall mcluhan",
-        "- alan kay",
-        "— alan kay",
-    ]
+    for name in SUSPICIOUS_ATTRIBUTION_NAMES:
+        patterns = [
+            f"- {name}",
+            f"— {name}",
+            f'" {name}',
+            f"' {name}",
+            f"according to {name}",
+            f"{name} once said",
+            f"{name} once warned",
+            f"{name} said",
+            f"{name} wrote",
+        ]
+        if any(pattern in lowered for pattern in patterns):
+            return True
 
-    return any(pattern in lowered for pattern in suspicious_patterns)
+    return False
 
 
 def is_overly_literal_reply(text: str, post_text: str) -> bool:
@@ -183,12 +359,224 @@ def has_ai_sounding_abstraction(text: str) -> bool:
         "will matter in an ai-driven world",
         "the true value lies",
         "subtly but profoundly",
+        "unlocking new possibilities",
+        "drives engagement",
+        "elevates the experience",
+        "resonates with audiences",
+        "creates impact at scale",
+        "strategic implication",
+        "thought leadership",
+        "future-forward",
     ]
 
     return any(pattern in lowered for pattern in weak_patterns)
 
 
-def is_bad_output(text: str, post_text: str = "") -> bool:
+def has_corporate_or_academic_tone(text: str) -> bool:
+    lowered = normalize_text(text)
+
+    if any(re.search(pattern, lowered) for pattern in CORPORATE_OR_ACADEMIC_PATTERNS):
+        return True
+
+    weak_phrases = [
+        "focus on",
+        "highlight the",
+        "explore the",
+        "worth noting",
+        "adds depth",
+        "captures fleeting beauty",
+        "the interplay of",
+        "the tension between",
+        "fresh lens",
+        "redefine the intersection",
+        "statement piece",
+        "cultural insiders",
+        "exclusive social markers",
+        "genuine sentiment",
+        "visual strategies",
+        "seasonal timing matters",
+        "marketing momentum",
+        "brand's raw edge",
+        "brand excitement",
+        "customer joy",
+    ]
+
+    if any(phrase in lowered for phrase in weak_phrases):
+        return True
+
+    suspicious_templates = [
+        r"^[A-Z][a-z]+(?: [a-z]+){0,6} matters(?: [a-z]+){0,6}\.$",
+        r"^[A-Z][a-z]+(?: [a-z]+){0,6} becomes(?: [a-z]+){0,6}\.$",
+        r"^[A-Z][a-z]+(?: [a-z]+){0,6} reveals(?: [a-z]+){0,6}\.$",
+        r"^[A-Z][a-z]+(?: [a-z]+){0,6} reflects(?: [a-z]+){0,6}\.$",
+        r"^[A-Z][a-z]+(?: [a-z]+){0,6} signals(?: [a-z]+){0,6}\.$",
+    ]
+
+    stripped = (text or "").strip()
+    if any(re.match(pattern, stripped) for pattern in suspicious_templates):
+        return True
+
+    abstract_nouns = [
+        "synergy",
+        "innovation",
+        "visibility",
+        "momentum",
+        "beauty",
+        "depth",
+        "experience",
+        "intersection",
+        "enthusiasm",
+        "sentiment",
+        "priority",
+        "values",
+        "strength",
+    ]
+    words = re.findall(r"\b[a-z]+\b", lowered)
+    abstract_hits = sum(1 for w in words if w in abstract_nouns)
+    if abstract_hits >= 2 and len(words) <= 14:
+        return True
+
+    return False
+
+
+def has_marketing_verb_structure(text: str) -> bool:
+    lowered = normalize_text(text)
+
+    if any(re.search(pattern, lowered) for pattern in MARKETING_VERB_PATTERNS):
+        return True
+
+    bad_starts = [
+        "highlight ",
+        "explore ",
+        "capture ",
+        "use ",
+        "drive ",
+        "position ",
+        "frame ",
+        "elevate ",
+        "challenge ",
+        "emphasize ",
+        "documenting ",
+        "understanding ",
+    ]
+
+    stripped = lowered.strip()
+    if any(stripped.startswith(prefix) for prefix in bad_starts):
+        return True
+
+    bad_phrases = [
+        "use urgency to",
+        "drive collection awareness",
+        "user experience is key",
+        "trust and satisfaction",
+        "cultural relevance",
+        "personal connection",
+        "what's next",
+        "frame the event",
+        "signal user satisfaction",
+        "challenge societal norms",
+        "capture the essence",
+        "unexpected beauty",
+        "everyday style",
+    ]
+
+    return any(phrase in lowered for phrase in bad_phrases)
+
+
+def has_non_latin_noise(text: str) -> bool:
+    if not text:
+        return False
+
+    has_latin = bool(LATIN_CHAR_RE.search(text))
+    has_cyrillic = bool(CYRILLIC_RE.search(text))
+    has_cjk = bool(CJK_RE.search(text))
+    has_japanese = bool(HIRAGANA_KATAKANA_RE.search(text))
+    has_hangul = bool(HANGUL_RE.search(text))
+
+    if has_latin and (has_cyrillic or has_cjk or has_japanese or has_hangul):
+        return True
+
+    if not has_latin and (has_cyrillic or has_cjk or has_japanese or has_hangul):
+        return True
+
+    return False
+
+
+def has_suspicious_unicode_mix(text: str) -> bool:
+    if not text:
+        return False
+
+    suspicious_mixed_word = re.search(
+        r"[A-Za-zÀ-ÿ]+[\u0400-\u04FF][A-Za-zÀ-ÿ]+|[\u0400-\u04FF]+[A-Za-zÀ-ÿ]+|[A-Za-zÀ-ÿ]+[\u3400-\u9FFF]+",
+        text,
+    )
+    return suspicious_mixed_word is not None
+
+
+def is_promo_heavy_source(text: str) -> bool:
+    normalized = normalize_text(text)
+
+    promo_hits = 0
+
+    promo_keywords = [
+        "out now",
+        "tickets",
+        "tune in",
+        "today only",
+        "special price",
+        "collection",
+        "available",
+        "shop",
+        "link",
+        "drop",
+        "radio",
+        "mixtape",
+        "shout out",
+        "fashion show",
+    ]
+
+    promo_hits += sum(1 for keyword in promo_keywords if keyword in normalized)
+
+    if "http" in (text or "").lower():
+        promo_hits += 1
+
+    if (text or "").count("!") >= 3:
+        promo_hits += 1
+
+    uppercase_words = re.findall(r"\b[A-Z]{3,}\b", text or "")
+    if len(uppercase_words) >= 3:
+        promo_hits += 1
+
+    return promo_hits >= 2
+
+
+def should_force_minimal_inspiration(post: ScoredPost) -> bool:
+    text = (post.text or "").strip()
+    normalized = normalize_text(text)
+
+    if not text:
+        return False
+
+    if is_promo_heavy_source(text):
+        return True
+
+    if len(normalized) <= 80:
+        if len(normalized.split()) <= 8:
+            return True
+
+    if text.count("!") >= 3:
+        return True
+
+    if (
+        re.search(r"\b[A-Z]{4,}\b", text)
+        and len(re.findall(r"\b[A-Z]{4,}\b", text)) >= 2
+    ):
+        return True
+
+    return False
+
+
+def is_bad_output(text: str, post_text: str = "", mode: str = "reply") -> bool:
     text = (text or "").strip()
 
     if not text:
@@ -198,6 +586,9 @@ def is_bad_output(text: str, post_text: str = "") -> bool:
         return True
 
     if contains_generic_phrase(text):
+        return True
+
+    if contains_promo_language(text):
         return True
 
     if is_too_short(text):
@@ -210,6 +601,18 @@ def is_bad_output(text: str, post_text: str = "") -> bool:
         return True
 
     if has_ai_sounding_abstraction(text):
+        return True
+
+    if mode == "inspiration" and has_corporate_or_academic_tone(text):
+        return True
+
+    if mode == "inspiration" and has_marketing_verb_structure(text):
+        return True
+
+    if has_non_latin_noise(text):
+        return True
+
+    if has_suspicious_unicode_mix(text):
         return True
 
     if post_text and is_too_similar_to_post(text, post_text):
@@ -232,11 +635,9 @@ def has_enough_text_substance(text: str) -> bool:
     words = [w for w in re.split(r"\s+", text) if w.strip()]
     lower = text.lower()
 
-    # Tweets largos normales
     if len(text) >= 35 and len(words) >= 6:
         return True
 
-    # Permitir aforismos / tesis cortas pero potentes
     strong_short_tokens = [
         "ai",
         "software",
@@ -274,16 +675,15 @@ def looks_like_low_signal_post(text: str) -> bool:
     return False
 
 
-def should_generate_for_post(post: ScoredPost) -> bool:
-    return get_skip_reason(post) is None
+def should_generate_for_post(post: ScoredPost, mode: str = "reply") -> bool:
+    return get_skip_reason(post, mode=mode) is None
 
 
-def fallback_field(post: ScoredPost, field_name: str) -> str:
+def fallback_field(post: ScoredPost, field_name: str, mode: str = "reply") -> str:
     topic = (post.topic_hint or "").lower().strip()
     text = (post.text or "").lower()
 
     fallback_pool = {
-        # ENSŌ = cultura digital / internet / sentido / archivo / PKM
         "enso": {
             "reply_1": [
                 "Access scales faster than interpretation.",
@@ -306,7 +706,6 @@ def fallback_field(post: ScoredPost, field_name: str) -> str:
                 "The bottleneck is no longer access. It is interpretation.",
             ],
         },
-        # JANO = arte / museos / instituciones / framing / memoria / curaduría
         "jano": {
             "reply_1": [
                 "What looks neutral is often just well-framed.",
@@ -329,7 +728,6 @@ def fallback_field(post: ScoredPost, field_name: str) -> str:
                 "Curation starts shaping meaning before explanation begins.",
             ],
         },
-        # 1710 GENERAL = sistemas / ejecución / estructura
         "1710": {
             "reply_1": [
                 "Strong ideas still need structure to travel well.",
@@ -352,7 +750,6 @@ def fallback_field(post: ScoredPost, field_name: str) -> str:
                 "A lot of ambition gets lost inside weak systems.",
             ],
         },
-        # 1710 AI / SOFTWARE / MARKET
         "1710_ai_software": {
             "reply_1": [
                 "The moat shifts once intelligence becomes infrastructure.",
@@ -377,12 +774,162 @@ def fallback_field(post: ScoredPost, field_name: str) -> str:
         },
     }
 
+    inspiration_fallback_pool = {
+        "enso": {
+            "reply_1": [
+                "The signal is less about content than about how it gets framed.",
+                "There is a clear orientation problem sitting underneath the surface.",
+                "What matters here is the model of attention, not the object itself.",
+            ],
+            "reply_2": [
+                "The stronger read is not the statement itself, but the interface, context or filtering logic around it.",
+                "There is a usable frame here about how digital culture compresses meaning while expanding access.",
+                "This can be reused as a signal about taste, mediation and how people navigate abundance.",
+            ],
+            "quote": [
+                "Abundance keeps growing. Orientation remains the rarer layer.",
+                "The interface makes access easier and interpretation thinner.",
+                "The archive expands faster than anyone's ability to read it well.",
+            ],
+            "new_post": [
+                "Abundance became cheap.\nOrientation didn't.",
+                "The interface solved access.\nIt did not solve meaning.",
+                "A large archive is useless if no one can feel the frame inside it.",
+            ],
+        },
+        "jano": {
+            "reply_1": [
+                "The frame is doing more work here than the object itself.",
+                "This reads like a lesson in selection before interpretation.",
+                "What looks neutral already carries a curatorial choice.",
+            ],
+            "reply_2": [
+                "The useful angle is how display, sequencing or institutional voice quietly shapes what feels legible.",
+                "There is a strong editorial read here about how authority hides inside arrangement.",
+                "The signal is not just the artwork or reference, but the structure that makes it appear coherent.",
+            ],
+            "quote": [
+                "Selection is already an argument, even when it looks quiet.",
+                "Display rarely arrives neutral. The frame gets there first.",
+                "Institutions shape meaning long before they explain it.",
+            ],
+            "new_post": [
+                "Nothing is shown without being arranged first.",
+                "The frame often lands before the explanation does.",
+                "A display can look neutral and still make a very specific argument.",
+            ],
+        },
+        "1710": {
+            "reply_1": [
+                "There is a stronger frame here than the post says directly.",
+                "The useful part is the signal underneath the statement.",
+                "This reads more like positioning than opinion.",
+            ],
+            "reply_2": [
+                "The interesting move is to extract the structure, taste or strategic frame hiding under the surface phrasing.",
+                "This could become a sharper 1710 post once the underlying signal is separated from the immediate take.",
+                "The post matters less as commentary than as evidence of what kind of frame is gaining traction.",
+            ],
+            "quote": [
+                "A signal becomes useful once you can name the frame behind it.",
+                "Taste often reveals structure before analysis catches up.",
+                "The interesting part is not the opinion. It is the position underneath it.",
+            ],
+            "new_post": [
+                "A lot of cultural signal arrives before people have language for it.",
+                "The frame matters most when it is still hard to name.",
+                "Good positioning often starts as a feeling before it becomes a sentence.",
+            ],
+        },
+        "1710_ai_software": {
+            "reply_1": [
+                "This points to a shift in where leverage is accumulating.",
+                "The useful signal is where value is moving, not the feature itself.",
+                "The frame here is about stack position, not novelty.",
+            ],
+            "reply_2": [
+                "The stronger read is about where advantage migrates once implementation gets cheaper and interfaces get crowded.",
+                "This can be reused as a signal about workflow, trust, distribution or the thinning of the software layer.",
+                "The interesting part is not the tool itself but the market structure it implies upstream.",
+            ],
+            "quote": [
+                "When implementation gets cheaper, value moves somewhere else.",
+                "AI does not flatten value. It changes where the leverage sits.",
+                "The real signal is which layer becomes harder to commoditize.",
+            ],
+            "new_post": [
+                "As implementation gets cheaper,\nvalue moves higher in the stack.",
+                "A cheaper model does not erase moats.\nIt relocates them.",
+                "The important shift is not capability.\nIt is where leverage starts to concentrate.",
+            ],
+        },
+    }
+
+    minimal_inspiration_pool = {
+        "1710": {
+            "reply_1": [
+                "The signal sits underneath the obvious statement.",
+                "This reads more like a taste marker than a take.",
+                "The frame matters more than the wording here.",
+            ],
+            "reply_2": [
+                "There is probably a stronger frame hiding underneath the surface language here.",
+                "Useful signal, but only once you strip out the immediate caption layer.",
+                "The post works better as a marker of scene logic than as literal commentary.",
+            ],
+            "quote": [
+                "The signal gets clearer once the frame is separated from the promo.",
+                "Interesting less for what it says than for what it signals.",
+                "The surface is loud. The frame underneath is quieter.",
+            ],
+            "new_post": [
+                "A lot of cultural signal arrives disguised as announcement.",
+                "The loudest layer is rarely the most interesting one.",
+                "Sometimes the frame is better than the caption.",
+            ],
+        },
+        "1710_ai_software": {
+            "reply_1": [
+                "The useful part is where leverage is moving.",
+                "This is more about stack position than novelty.",
+                "The signal is upstream from the feature.",
+            ],
+            "reply_2": [
+                "The stronger read is not the feature itself but the layer gaining defensibility.",
+                "Useful once you strip it down to where leverage is starting to accumulate.",
+                "The post matters less literally than as a marker of where value may be shifting.",
+            ],
+            "quote": [
+                "The real signal is which layer gets harder to commoditize.",
+                "Implementation gets cheaper. Leverage moves.",
+                "The feature is surface. The stack shift is the real story.",
+            ],
+            "new_post": [
+                "When implementation gets cheaper,\nvalue looks for a new home.",
+                "The surface product changes fast.\nThe leverage shift matters more.",
+                "The interesting part is not the feature.\nIt is the layer gaining power.",
+            ],
+        },
+    }
+
     if topic == "1710":
         topic_key = detect_1710_subtopic(text)
     else:
         topic_key = topic if topic in fallback_pool else "1710"
 
-    return random.choice(fallback_pool[topic_key][field_name])
+    if mode == "inspiration" and should_force_minimal_inspiration(post):
+        minimal_topic_key = (
+            topic_key if topic_key in minimal_inspiration_pool else "1710"
+        )
+        return random.choice(minimal_inspiration_pool[minimal_topic_key][field_name])
+
+    if mode == "inspiration":
+        pool = inspiration_fallback_pool
+    else:
+        pool = fallback_pool
+
+    topic_pool = pool.get(topic_key, pool["1710"])
+    return random.choice(topic_pool[field_name])
 
 
 def detect_1710_subtopic(text: str) -> str:
@@ -488,7 +1035,7 @@ Topic style guide for 1710Studios general:
 """.strip()
 
 
-def build_prompt(post: ScoredPost) -> str:
+def build_reply_prompt(post: ScoredPost) -> str:
     context = load_full_context()
     topic_style = get_topic_style_guide(post)
     effective_subtopic = get_effective_subtopic(post)
@@ -657,12 +1204,300 @@ Post text:
 """.strip()
 
 
-def build_retry_prompt(post: ScoredPost, field_name: str, bad_text: str) -> str:
+def build_inspiration_prompt(post: ScoredPost) -> str:
+    context = load_full_context()
+    topic_style = get_topic_style_guide(post)
+    effective_subtopic = get_effective_subtopic(post)
+    minimal_mode = should_force_minimal_inspiration(post)
+
+    extra_examples = ""
+
+    if effective_subtopic == "1710_ai_software":
+        extra_examples = """
+Examples especially relevant here:
+
+Good observation:
+"This points to a shift in where leverage is accumulating."
+
+Good angle:
+"The real read is not the feature, but the layer of the stack gaining pricing power."
+
+Good quote:
+"When implementation gets cheaper, value migrates."
+
+Good post seed:
+"As software gets easier to produce,
+distribution and workflow become easier to defend."
+""".strip()
+    elif effective_subtopic == "jano":
+        extra_examples = """
+Examples especially relevant here:
+
+Good observation:
+"The frame is doing more work here than the object itself."
+
+Good angle:
+"This can be reused as a read on how authority hides inside display and sequence."
+
+Good quote:
+"Selection is already an argument."
+
+Good post seed:
+"A display can look neutral
+and still make a very specific claim."
+""".strip()
+    elif effective_subtopic == "enso":
+        extra_examples = """
+Examples especially relevant here:
+
+Good observation:
+"The signal sits in the interface logic, not just in the post itself."
+
+Good angle:
+"This is useful as a read on orientation, filtering and how digital culture compresses meaning."
+
+Good quote:
+"Abundance keeps scaling. Orientation does not."
+
+Good post seed:
+"The interface solved access.
+It did not solve meaning."
+""".strip()
+    else:
+        extra_examples = """
+Examples especially relevant here:
+
+Good observation:
+"This feels more like positioning than opinion."
+
+Good angle:
+"The useful move is to name the frame underneath the statement, not to repeat the statement."
+
+Good quote:
+"The signal matters once the frame becomes legible."
+
+Good post seed:
+"Good positioning often starts as a feeling
+before it becomes a sentence."
+""".strip()
+
+    minimal_mode_rules = ""
+    if minimal_mode:
+        minimal_mode_rules = """
+Minimal mode is ON for this source.
+
+Additional rules for minimal mode:
+- Keep everything more compressed than usual
+- Do not inflate a short, promo-heavy or coded source into a theory
+- Do not explain too much
+- Prefer one clean frame over multiple ideas
+- observation should feel like a signal note, not analysis
+- angle should stay short and restrained
+- quote should be lean and publishable
+- new_post should be sparse and sharp
+- If the source is basically an announcement, extract the ritual, aura, taste code or distribution logic behind it
+- Never rewrite the announcement itself
+""".strip()
+
+    return f"""
+You are helping Manuel extract inspiration signals for 1710Studios from X posts.
+
+The goal is NOT to reply directly.
+The goal is to extract:
+- the interesting observation
+- the hidden angle
+- a strong quote-tweet possibility
+- a usable original post seed
+
+Return ONLY valid JSON with exactly these keys:
+{{
+  "reply_1": "...",
+  "reply_2": "...",
+  "quote": "...",
+  "new_post": "..."
+}}
+
+Interpret the fields like this:
+- reply_1 = observation
+- reply_2 = angle
+- quote = quote-tweet draft with a stronger frame
+- new_post = original 1710-style post seed inspired by the source idea
+
+Hard rules:
+- Write in English
+- English only, using Latin characters only
+- No hashtags
+- No emojis
+- No praise of the author
+- No flattery
+- No invented quotes
+- No quotation marks around the whole output
+- No fake attribution
+- Do not mention the author's handle unless necessary
+- Do not write a generic agreement
+- Do not simply paraphrase the post
+- Extract the latent pattern, frame, tension, aesthetic signal, strategic implication or cultural meaning
+- Stay specific to the source post
+- Prefer sharp observations over generic abstraction
+- Prefer usable angles over summaries
+- The output should feel like material Manuel could reuse later in his own voice
+
+Very important negative rules:
+- Do not sound like a marketing strategist
+- Do not sound like a brand consultant
+- Do not sound like ad copy
+- Do not sound like promo copy
+- Do not sound like a product caption
+- Do not sound like an event announcement
+- Do not sound like an Instagram caption
+- Do not sound like a school essay
+- Do not sound like an art-school caption
+- Do not sound like a brand deck
+- Do not translate cultural signal into generic business advice
+- Do not turn style, music, fashion or taste into startup language
+- Do not turn sparse or coded posts into corporate analysis
+- Do not write phrases like "now available", "don't miss", "stay tuned", "premium materials", "perfect for the season", "limited edition launch", "live updates", "tickets to", "exclusive music", "customer satisfaction", "brand exposure"
+- Do not use phrases like "the interplay of", "the tension between", "explore the", "adds depth", "fleeting beauty", "statement piece", "cutting-edge", "innovation", "synergy"
+- Do not use verbs or structures like "highlight", "explore", "capture the essence", "use urgency", "drive awareness", "challenge norms", "position as", "frame as", "redefine"
+- Do not summarize the source in polished neutral language
+- Avoid clean but empty phrasing
+- If the output sounds like a museum caption, marketing slide or design-school summary, it is wrong
+- Do not output Chinese, Cyrillic, Japanese or mixed-script text
+- Do not invent philosopher, founder, artist or celebrity attributions
+
+Preferred mode:
+- Preserve the texture of the source when relevant
+- Prefer curatorial reading over promotional rewrite
+- Prefer editorial framing over explanation
+- Prefer signal, taste, positioning and pattern recognition
+- If the source is sparse, coded, aesthetic or scene-based, respond with taste and framing, not corporate analysis
+- If the tweet is fashion/music/culture coded, preserve the signal without sounding corny
+- If the tweet is AI/software/markets, identify where value, leverage or taste is shifting
+- If the tweet is art/institutions, identify the frame, display logic or meaning structure
+- If the tweet is digital culture/interface, identify the hidden model, archive logic or orientation problem
+
+{minimal_mode_rules}
+
+Bad outputs to avoid:
+- generic agreement
+- generic praise
+- vague motivational writing
+- empty abstractions
+- summary without angle
+- promo language
+- consultant language
+- ad language
+- fake quotes
+- fake attribution
+- mixed alphabets
+
+Length guidance:
+- reply_1 / observation: 8 to 18 words
+- reply_2 / angle: 12 to 28 words
+- quote: 8 to 24 words
+- new_post: 1 to 4 short lines max
+
+Effective subtopic:
+{effective_subtopic}
+
+Topic-specific guidance:
+{topic_style}
+
+General examples of the kind of writing wanted:
+
+Good observation:
+"The interesting part is the frame behind the statement."
+
+Good observation:
+"This reads more like a signal than a take."
+
+Good angle:
+"The post matters less as an opinion than as evidence of a changing taste structure."
+
+Good quote:
+"The signal gets interesting once the frame becomes legible."
+
+Good post seed:
+"A lot of cultural signal arrives
+before people have language for it."
+
+{extra_examples}
+
+Brand context:
+{context}
+
+Post metadata:
+- topic_hint: {post.topic_hint}
+- effective_subtopic: {effective_subtopic}
+- recommended_action: {post.recommended_action}
+- priority: {post.priority}
+- author: {post.author}
+- handle: {post.handle}
+- url: {post.url}
+- minimal_mode: {minimal_mode}
+
+Source post:
+\"\"\"{post.text}\"\"\"
+""".strip()
+
+
+def build_prompt(post: ScoredPost, mode: str = "reply") -> str:
+    if mode == "inspiration":
+        return build_inspiration_prompt(post)
+    return build_reply_prompt(post)
+
+
+def build_retry_prompt(
+    post: ScoredPost, field_name: str, bad_text: str, mode: str = "reply"
+) -> str:
+    minimal_mode = mode == "inspiration" and should_force_minimal_inspiration(post)
+
+    if mode == "inspiration":
+        field_guidance = {
+            "reply_1": "Rewrite it as a sharper observation.",
+            "reply_2": "Rewrite it as a stronger angle Manuel could reuse later.",
+            "quote": "Rewrite it as a quote-tweet draft with a stronger frame.",
+            "new_post": "Rewrite it as an original 1710-style post seed.",
+        }
+        extra_rules = """
+- Do not sound promotional
+- Do not sound like ad copy
+- Do not sound like brand strategy language
+- Do not use product-launch wording
+- Do not use mixed alphabets or non-Latin scripts
+- Prefer editorial framing, cultural reading, taste or positioning
+- Preserve signal without turning it into consultant language
+- Do not sound like a school essay
+- Do not sound like a polished neutral summary
+- Avoid phrases like "the interplay of", "the tension between", "explore the", "adds depth", "innovation", "synergy"
+- Avoid verbs like "highlight", "capture the essence", "drive awareness", "challenge norms", "position as", "frame as"
+""".strip()
+
+        if minimal_mode:
+            extra_rules += """
+- Minimal mode is ON
+- Keep the rewrite shorter and drier
+- Do not inflate the source
+- One clean frame is enough
+- If the source is promo-heavy, extract the aura, ritual or signal, not the announcement
+""".strip()
+    else:
+        field_guidance = {
+            "reply_1": "Rewrite it as a concise natural reply.",
+            "reply_2": "Rewrite it as a grounded reflective reply.",
+            "quote": "Rewrite it as a quote-tweet draft.",
+            "new_post": "Rewrite it as an original post inspired by the tweet.",
+        }
+        extra_rules = ""
+
     return f"""
 Rewrite only one X draft field.
 
 Field:
 {field_name}
+
+Field intent:
+{field_guidance.get(field_name, "Rewrite it well.")}
 
 Original tweet:
 \"\"\"{post.text}\"\"\"
@@ -686,14 +1521,16 @@ Rules:
 - Do not sound like a thought-leadership post
 - Avoid generic "humanity / context / essence" language
 - Be concrete and specific to the tweet
-- Prefer market, software, product, systems, distribution, incentives, lock-in, interface, execution
-- Keep it concise and natural
-- Make it sound human, sharp and grounded
+- Keep it concise, sharp and grounded
+- Add a real angle instead of paraphrasing
+{extra_rules}
 """.strip()
 
 
-def regenerate_field(post: ScoredPost, field_name: str, bad_text: str) -> str:
-    prompt = build_retry_prompt(post, field_name, bad_text)
+def regenerate_field(
+    post: ScoredPost, field_name: str, bad_text: str, mode: str = "reply"
+) -> str:
+    prompt = build_retry_prompt(post, field_name, bad_text, mode=mode)
 
     try:
         result = generate_text(prompt)
@@ -705,14 +1542,14 @@ def regenerate_field(post: ScoredPost, field_name: str, bad_text: str) -> str:
         return ""
 
 
-def repair_drafts(post: ScoredPost, drafts: dict) -> dict:
+def repair_drafts(post: ScoredPost, drafts: dict, mode: str = "reply") -> dict:
     repaired = drafts.copy()
 
     for field_name, value in drafts.items():
-        if is_bad_output(value, post.text):
-            retry_value = regenerate_field(post, field_name, value)
+        if is_bad_output(value, post.text, mode=mode):
+            retry_value = regenerate_field(post, field_name, value, mode=mode)
 
-            if retry_value and not is_bad_output(retry_value, post.text):
+            if retry_value and not is_bad_output(retry_value, post.text, mode=mode):
                 print(
                     f"↻ Campo reparado para @{clean_handle(post.handle)}: {field_name}"
                 )
@@ -721,13 +1558,13 @@ def repair_drafts(post: ScoredPost, drafts: dict) -> dict:
                 print(
                     f"↳ Fallback por campo para @{clean_handle(post.handle)}: {field_name}"
                 )
-                repaired[field_name] = fallback_field(post, field_name)
+                repaired[field_name] = fallback_field(post, field_name, mode=mode)
 
     return repaired
 
 
-def generate_drafts(post: ScoredPost) -> dict:
-    prompt = build_prompt(post)
+def generate_drafts(post: ScoredPost, mode: str = "reply") -> dict:
+    prompt = build_prompt(post, mode=mode)
 
     try:
         result = generate_json(prompt)
@@ -739,32 +1576,29 @@ def generate_drafts(post: ScoredPost) -> dict:
             "new_post": clean_text(result.get("new_post", "")),
         }
 
-        return repair_drafts(post, drafts)
+        return repair_drafts(post, drafts, mode=mode)
 
     except Exception as e:
         print(
             f"⚠️ Error generando drafts con Ollama para @{clean_handle(post.handle)}: {e}"
         )
         return {
-            "reply_1": fallback_field(post, "reply_1"),
-            "reply_2": fallback_field(post, "reply_2"),
-            "quote": fallback_field(post, "quote"),
-            "new_post": fallback_field(post, "new_post"),
+            "reply_1": fallback_field(post, "reply_1", mode=mode),
+            "reply_2": fallback_field(post, "reply_2", mode=mode),
+            "quote": fallback_field(post, "quote", mode=mode),
+            "new_post": fallback_field(post, "new_post", mode=mode),
         }
 
 
-def get_skip_reason(post: ScoredPost):
+def get_skip_reason(post: ScoredPost, mode: str = "reply"):
     text = (post.text or "").strip()
 
     if not text:
         return "sin texto"
 
-    # Alineado con score_posts.py: hasta 7 días
-    if post.minutes_since_posted is not None and post.minutes_since_posted > 10080:
-        return f"demasiado viejo ({post.minutes_since_posted} min)"
-
-    # No volver a filtrar por score aquí.
-    # El score ya se filtra en generate_drafts.py con SQL.
+    if mode == "reply":
+        if post.minutes_since_posted is not None and post.minutes_since_posted > 10080:
+            return f"demasiado viejo ({post.minutes_since_posted} min)"
 
     if looks_like_low_signal_post(text):
         return "post de baja señal"

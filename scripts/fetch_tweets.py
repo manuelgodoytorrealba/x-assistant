@@ -1,3 +1,4 @@
+import argparse
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -8,11 +9,56 @@ from playwright.sync_api import sync_playwright
 from app.db import get_connection
 
 X_BASE = "https://x.com"
-MAX_POST_AGE_MINUTES = 10080  # 3 días
+
+REPLY_MAX_POST_AGE_MINUTES = 10080  # 7 días
+INSPIRATION_MAX_POST_AGE_MINUTES = None
+
 MAX_SCROLL_STEPS = 16
 SCROLL_PIXELS = 120
 
 AUTH_FILE = Path("playwright/.auth/x_state.json")
+
+
+def get_mode_config(mode: str) -> dict:
+    if mode == "reply":
+        return {
+            "allowed_usage_modes": ("reply", "both"),
+            "max_post_age_minutes": REPLY_MAX_POST_AGE_MINUTES,
+        }
+    if mode == "inspiration":
+        return {
+            "allowed_usage_modes": ("inspiration", "both"),
+            "max_post_age_minutes": INSPIRATION_MAX_POST_AGE_MINUTES,
+        }
+    if mode == "all":
+        return {
+            "allowed_usage_modes": None,
+            "max_post_age_minutes": REPLY_MAX_POST_AGE_MINUTES,
+        }
+    raise ValueError(f"Modo inválido: {mode}")
+
+
+def load_accounts(cursor, mode: str = "all"):
+    config = get_mode_config(mode)
+
+    query = """
+        SELECT handle, topic_hint, author_priority, usage_mode
+        FROM accounts_to_watch
+        WHERE is_active = 1
+    """
+    params = []
+
+    allowed_usage_modes = config["allowed_usage_modes"]
+
+    if allowed_usage_modes is not None:
+        placeholders = ", ".join(["?"] * len(allowed_usage_modes))
+        query += f" AND usage_mode IN ({placeholders})"
+        params.extend(allowed_usage_modes)
+
+    query += " ORDER BY topic_hint ASC, author_priority DESC, handle ASC"
+
+    cursor.execute(query, params)
+    return cursor.fetchall()
 
 
 def parse_minutes_since(iso_date: str):
@@ -165,7 +211,13 @@ def focus_timeline(page):
             continue
 
 
-def collect_visible_candidates(page, handle: str, seen_urls: set, debug: bool = True):
+def collect_visible_candidates(
+    page,
+    handle: str,
+    seen_urls: set,
+    max_post_age_minutes: int | None,
+    debug: bool = True,
+):
     candidates = []
 
     articles = page.locator("article[data-testid='tweet']")
@@ -215,7 +267,10 @@ def collect_visible_candidates(page, handle: str, seen_urls: set, debug: bool = 
             if tweet_url in seen_urls:
                 continue
 
-            if minutes_since_posted > MAX_POST_AGE_MINUTES:
+            if (
+                max_post_age_minutes is not None
+                and minutes_since_posted > max_post_age_minutes
+            ):
                 if debug:
                     print(
                         f"   ⚠️ tweet {i+1}: demasiado viejo "
@@ -255,7 +310,12 @@ def collect_visible_candidates(page, handle: str, seen_urls: set, debug: bool = 
     return candidates
 
 
-def collect_posts_for_handle(page, handle: str, limit: int = 5):
+def collect_posts_for_handle(
+    page,
+    handle: str,
+    limit: int = 5,
+    max_post_age_minutes: int | None = REPLY_MAX_POST_AGE_MINUTES,
+):
     url = f"{X_BASE}/{handle}"
     print(f"   → abriendo {url}")
 
@@ -291,6 +351,7 @@ def collect_posts_for_handle(page, handle: str, limit: int = 5):
             page=page,
             handle=handle,
             seen_urls=seen_urls,
+            max_post_age_minutes=max_post_age_minutes,
             debug=(step <= 1),
         )
         candidates.extend(step_candidates)
@@ -303,29 +364,40 @@ def collect_posts_for_handle(page, handle: str, limit: int = 5):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--mode",
+        choices=["all", "reply", "inspiration"],
+        default="all",
+        help="Modo de selección de cuentas",
+    )
+    args = parser.parse_args()
+
+    mode = args.mode
+    config = get_mode_config(mode)
+    max_post_age_minutes = config["max_post_age_minutes"]
+
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute(
-        """
-        SELECT handle, topic_hint, author_priority
-        FROM accounts_to_watch
-        WHERE is_active = 1
-        ORDER BY author_priority DESC
-        """
-    )
-
-    accounts = cursor.fetchall()
+    accounts = load_accounts(cursor, mode=mode)
 
     if not accounts:
         conn.close()
-        print("No hay cuentas activas en accounts_to_watch.")
+        print("No hay cuentas activas para este modo en accounts_to_watch.")
         return
+
+    print(f"🧭 Modo de fetch: {mode}")
+    print(f"📚 Cuentas cargadas: {len(accounts)}")
+    if max_post_age_minutes is None:
+        print("🕰️ Límite de antigüedad: sin límite")
+    else:
+        print(f"🕰️ Límite de antigüedad: {max_post_age_minutes} minutos")
 
     inserted = 0
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)
+        browser = p.chromium.launch(headless=True)
 
         if AUTH_FILE.exists():
             print(f"🔐 Usando sesión guardada: {AUTH_FILE}")
@@ -342,11 +414,17 @@ def main():
             handle = (raw_handle or "").lstrip("@")
             topic_hint = row["topic_hint"]
             author_priority = row["author_priority"]
+            usage_mode = row["usage_mode"]
 
-            print(f"▶ Leyendo @{handle} ...")
+            print(f"▶ Leyendo @{handle} [{topic_hint} | {usage_mode}] ...")
 
             try:
-                posts = collect_posts_for_handle(page, handle, limit=5)
+                posts = collect_posts_for_handle(
+                    page,
+                    handle,
+                    limit=5,
+                    max_post_age_minutes=max_post_age_minutes,
+                )
             except Exception as e:
                 print(f"⚠️ Error leyendo @{handle}: {e}")
                 continue
@@ -359,9 +437,9 @@ def main():
                     INSERT OR IGNORE INTO posts (
                         author, handle, text, url,
                         minutes_since_posted, likes, replies, reposts,
-                        topic_hint, author_priority
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        topic_hint, author_priority, fetch_mode
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         handle,
@@ -374,6 +452,7 @@ def main():
                         post["reposts"],
                         topic_hint,
                         author_priority,
+                        mode,
                     ),
                 )
 

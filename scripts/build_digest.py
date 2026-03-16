@@ -1,3 +1,5 @@
+import argparse
+
 from app.db import get_connection
 
 RESET = "\033[0m"
@@ -43,7 +45,37 @@ def format_post_age(minutes_since_posted):
     return f"{days} d {remaining_hours} h"
 
 
+def get_digest_config(mode: str) -> dict:
+    if mode == "inspiration":
+        return {
+            "title": "=== X INSPIRATION DIGEST ===",
+            "field_1_label": "observation",
+            "field_2_label": "angle",
+            "field_3_label": "quote_frame",
+            "field_4_label": "post_seed",
+        }
+
+    return {
+        "title": "=== DAILY X DIGEST ===",
+        "field_1_label": "reply_1",
+        "field_2_label": "reply_2",
+        "field_3_label": "quote",
+        "field_4_label": "new_post",
+    }
+
+
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--mode",
+        choices=["reply", "inspiration"],
+        default="reply",
+    )
+    args = parser.parse_args()
+    mode = args.mode
+
+    config = get_digest_config(mode)
+
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -61,23 +93,27 @@ def main():
             p.url,
             p.minutes_since_posted,
             p.created_at,
+            p.fetch_mode,
             d.reply_1,
             d.reply_2,
             d.quote,
             d.new_post
         FROM drafts d
         JOIN posts p ON d.post_id = p.id
+        WHERE p.fetch_mode = ?
         ORDER BY p.score DESC
-        """
+        """,
+        (mode,),
     )
 
     rows = cursor.fetchall()
     conn.close()
 
-    print("\n" + color("=== DAILY X DIGEST ===", BOLD + WHITE) + "\n")
+    print("\n" + color(config["title"], BOLD + WHITE) + "\n")
+    print(color(f"modo: {mode}", DIM + WHITE) + "\n")
 
     if not rows:
-        print(color("No hay drafts generados.", GRAY))
+        print(color("No hay drafts generados para este modo.", GRAY))
         return
 
     for i, row in enumerate(rows, start=1):
@@ -102,20 +138,20 @@ def main():
         print(color(row["text"], BLUE))
 
         print()
-        print(color("reply_1", BOLD + GREEN))
-        print(color(row["reply_1"], GREEN))
+        print(color(config["field_1_label"], BOLD + GREEN))
+        print(color(row["reply_1"] or "", GREEN))
 
         print()
-        print(color("reply_2", BOLD + CYAN))
-        print(color(row["reply_2"], CYAN))
+        print(color(config["field_2_label"], BOLD + CYAN))
+        print(color(row["reply_2"] or "", CYAN))
 
         print()
-        print(color("quote", BOLD + YELLOW))
-        print(color(row["quote"], YELLOW))
+        print(color(config["field_3_label"], BOLD + YELLOW))
+        print(color(row["quote"] or "", YELLOW))
 
         print()
-        print(color("new_post", BOLD + MAGENTA))
-        print(color(row["new_post"], MAGENTA))
+        print(color(config["field_4_label"], BOLD + MAGENTA))
+        print(color(row["new_post"] or "", MAGENTA))
 
         print("\n" + color("-" * 90, GRAY) + "\n")
 

@@ -1,28 +1,59 @@
+import argparse
+
 from app.db import get_connection
 from app.models import ScoredPost
 from app.generators import generate_drafts, get_skip_reason
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--mode",
+        choices=["reply", "inspiration"],
+        default="reply",
+    )
+    args = parser.parse_args()
+    mode = args.mode
+
     conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute("DELETE FROM drafts")
 
-    cursor.execute(
-        """
-    SELECT id, author, handle, text, url,
-           minutes_since_posted, likes, replies, reposts,
-           topic_hint, author_priority,
-           topic_relevance, early_engagement, reply_potential,
-           score, recommended_action, priority
-    FROM posts
-    WHERE score IS NOT NULL
-      AND score >= 65
-      AND recommended_action IN ('reply', 'quote', 'consider')
-    ORDER BY score DESC
-    """
-    )
+    if mode == "reply":
+        cursor.execute(
+            """
+            SELECT id, author, handle, text, url,
+                   minutes_since_posted, likes, replies, reposts,
+                   topic_hint, author_priority,
+                   topic_relevance, early_engagement, reply_potential,
+                   score, recommended_action, priority
+            FROM posts
+            WHERE fetch_mode = ?
+              AND score IS NOT NULL
+              AND score >= 65
+              AND recommended_action IN ('reply', 'quote', 'consider')
+            ORDER BY score DESC
+            """,
+            (mode,),
+        )
+    else:
+        cursor.execute(
+            """
+            SELECT id, author, handle, text, url,
+                   minutes_since_posted, likes, replies, reposts,
+                   topic_hint, author_priority,
+                   topic_relevance, early_engagement, reply_potential,
+                   score, recommended_action, priority
+            FROM posts
+            WHERE fetch_mode = ?
+              AND score IS NOT NULL
+              AND score >= 55
+              AND recommended_action IN ('capture', 'consider')
+            ORDER BY score DESC
+            """,
+            (mode,),
+        )
 
     rows = cursor.fetchall()
     selected_rows = []
@@ -48,18 +79,26 @@ def main():
         )
 
         handle = (row["handle"] or "").lstrip("@")
-        reason = get_skip_reason(post)
+        reason = get_skip_reason(post, mode=mode)
 
         if reason is None:
             selected_rows.append((row, post))
         else:
             print(f"⏭ Omitido @{handle}: {reason}")
 
+    if not selected_rows:
+        conn.commit()
+        conn.close()
+        print(f"⚠️ No hay posts seleccionados para generar drafts en modo {mode}.")
+        return
+
     for index, (row, post) in enumerate(selected_rows, start=1):
         handle = (row["handle"] or "").lstrip("@")
-        print(f"▶ Generando drafts para @{handle} ({index}/{len(selected_rows)})")
+        print(
+            f"▶ Generando drafts para @{handle} ({index}/{len(selected_rows)}) [{mode}]"
+        )
 
-        drafts = generate_drafts(post)
+        drafts = generate_drafts(post, mode=mode)
 
         cursor.execute(
             """
@@ -80,7 +119,7 @@ def main():
     conn.commit()
     conn.close()
 
-    print("✅ Borradores generados en SQLite.")
+    print(f"✅ Borradores generados en SQLite para modo {mode}.")
 
 
 if __name__ == "__main__":

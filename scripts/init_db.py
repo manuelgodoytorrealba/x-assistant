@@ -1,6 +1,16 @@
 from app.db import get_connection
 
 
+def ensure_column(cursor, table_name: str, column_name: str, column_def: str):
+    cursor.execute(f"PRAGMA table_info({table_name})")
+    columns = [row[1] for row in cursor.fetchall()]
+    if column_name not in columns:
+        cursor.execute(
+            f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_def}"
+        )
+        print(f"🛠 Añadida columna {table_name}.{column_name}")
+
+
 def main():
     conn = get_connection()
     cursor = conn.cursor()
@@ -25,6 +35,7 @@ def main():
         score REAL,
         recommended_action TEXT,
         priority TEXT,
+        fetch_mode TEXT NOT NULL DEFAULT 'reply',
 
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
@@ -62,9 +73,15 @@ def main():
         topic_hint TEXT NOT NULL,
         author_priority INTEGER NOT NULL DEFAULT 5,
         is_active INTEGER NOT NULL DEFAULT 1,
+        usage_mode TEXT NOT NULL DEFAULT 'reply',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """)
+
+    ensure_column(cursor, "posts", "fetch_mode", "TEXT NOT NULL DEFAULT 'reply'")
+    ensure_column(
+        cursor, "accounts_to_watch", "usage_mode", "TEXT NOT NULL DEFAULT 'reply'"
+    )
 
     conn.commit()
     conn.close()

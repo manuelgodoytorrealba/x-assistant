@@ -6,8 +6,8 @@ def main():
     cursor = conn.cursor()
 
     cursor.execute("DELETE FROM drafts")
-    cursor.execute("DELETE FROM feedback")
     cursor.execute("DELETE FROM posts")
+    cursor.execute("DELETE FROM feedback")
 
     conn.commit()
     conn.close()

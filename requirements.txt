@@ -5,3 +5,4 @@ jinja2
 requests
 playwright
 beautifulsoup4
+pyyaml

@@ -1,6 +1,8 @@
+import argparse
+
 from app.db import get_connection
 
-MAX_SCORING_AGE_MINUTES = 10080  # 7 días
+REPLY_MAX_SCORING_AGE_MINUTES = 10080  # 7 días
 
 
 def clamp(value, min_value=0, max_value=100):
@@ -90,6 +92,12 @@ def score_topic_relevance(topic_hint: str, text: str) -> float:
             "vendor",
             "lock-in",
             "technology",
+            "fashion",
+            "music",
+            "style",
+            "taste",
+            "brand",
+            "aesthetic",
         ],
     }
 
@@ -142,6 +150,35 @@ def score_early_engagement(minutes_since_posted, likes, replies, reposts) -> flo
     if raw >= 3:
         return 48
     return 35
+
+
+def score_inspiration_signal(minutes_since_posted, likes, replies, reposts) -> float:
+    engagement = (likes or 0) + ((replies or 0) * 1.5) + ((reposts or 0) * 2)
+
+    if engagement >= 300:
+        base = 92
+    elif engagement >= 120:
+        base = 84
+    elif engagement >= 40:
+        base = 76
+    elif engagement >= 10:
+        base = 66
+    elif engagement >= 3:
+        base = 58
+    else:
+        base = 52
+
+    if minutes_since_posted is None:
+        return base
+
+    if minutes_since_posted <= 10080:
+        return clamp(base + 5)
+    if minutes_since_posted <= 43200:  # 30 días
+        return base
+    if minutes_since_posted <= 129600:  # 90 días
+        return clamp(base - 3)
+
+    return clamp(base - 6)
 
 
 def score_reply_potential(text: str) -> float:
@@ -202,28 +239,111 @@ def score_reply_potential(text: str) -> float:
 
     if any(
         bad in lower
-        for bad in [
-            "gm",
-            "gn",
-            "lol",
-            "lfg",
-            "🚀",
-            "🔥",
-            "join now",
-            "buy now",
-        ]
+        for bad in ["gm", "gn", "lol", "lfg", "🚀", "🔥", "join now", "buy now"]
     ):
         score -= 18
 
     return clamp(score)
 
 
-def decide_action(score: float, reply_potential: float) -> str:
+def score_idea_density(text: str) -> float:
+    text = (text or "").strip()
+    lower = text.lower()
+
+    if not text:
+        return 0
+
+    score = 52
+    length = len(text)
+
+    if 40 <= length <= 220:
+        score += 15
+    elif 220 < length <= 500:
+        score += 10
+    elif 20 <= length < 40:
+        score += 8
+    elif 8 <= length < 20:
+        score += 4
+    elif length < 8:
+        score -= 10
+
+    if any(
+        token in lower
+        for token in [
+            "because",
+            "instead",
+            "means",
+            "signal",
+            "taste",
+            "style",
+            "culture",
+            "design",
+            "system",
+            "identity",
+            "archive",
+            "future",
+            "internet",
+            "software",
+            "brand",
+            "aesthetic",
+            "fashion",
+            "music",
+            "art",
+            "image",
+            "look",
+            "scene",
+            "energy",
+            "direction",
+            "world",
+        ]
+    ):
+        score += 14
+
+    if ":" in text or "—" in text or "-" in text:
+        score += 6
+
+    if "?" in text:
+        score += 4
+
+    if any(
+        token in lower
+        for token in [
+            "collection",
+            "campaign",
+            "directed by",
+            "show",
+            "season",
+            "archive",
+            "runway",
+            "cover",
+            "film",
+            "editorial",
+            "visual",
+            "brand",
+        ]
+    ):
+        score += 8
+
+    if any(bad in lower for bad in ["join now", "buy now", "link in bio"]):
+        score -= 18
+
+    return clamp(score)
+
+
+def decide_action_reply(score: float, reply_potential: float) -> str:
     if score >= 85 and reply_potential >= 70:
         return "reply"
     if score >= 78:
         return "quote"
     if score >= 65:
+        return "consider"
+    return "ignore"
+
+
+def decide_action_inspiration(score: float) -> str:
+    if score >= 75:
+        return "capture"
+    if score >= 55:
         return "consider"
     return "ignore"
 
@@ -237,63 +357,104 @@ def decide_priority(score: float) -> str:
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--mode",
+        choices=["reply", "inspiration"],
+        default="reply",
+    )
+    args = parser.parse_args()
+    mode = args.mode
+
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute(
-        """
-        UPDATE posts
-        SET topic_relevance = NULL,
-            early_engagement = NULL,
-            reply_potential = NULL,
-            score = NULL,
-            recommended_action = NULL,
-            priority = NULL
-        WHERE minutes_since_posted IS NULL
-           OR minutes_since_posted > ?
-        """,
-        (MAX_SCORING_AGE_MINUTES,),
-    )
+    if mode == "reply":
+        cursor.execute(
+            """
+            UPDATE posts
+            SET topic_relevance = NULL,
+                early_engagement = NULL,
+                reply_potential = NULL,
+                score = NULL,
+                recommended_action = NULL,
+                priority = NULL
+            WHERE fetch_mode = ?
+              AND (minutes_since_posted IS NULL OR minutes_since_posted > ?)
+            """,
+            (mode, REPLY_MAX_SCORING_AGE_MINUTES),
+        )
 
-    cursor.execute(
-        """
-        SELECT id, handle, text, topic_hint, minutes_since_posted, likes, replies, reposts
-        FROM posts
-        WHERE minutes_since_posted IS NOT NULL
-          AND minutes_since_posted <= ?
-        ORDER BY id DESC
-        """,
-        (MAX_SCORING_AGE_MINUTES,),
-    )
+        cursor.execute(
+            """
+            SELECT id, handle, text, topic_hint, minutes_since_posted, likes, replies, reposts
+            FROM posts
+            WHERE fetch_mode = ?
+              AND minutes_since_posted IS NOT NULL
+              AND minutes_since_posted <= ?
+            ORDER BY id DESC
+            """,
+            (mode, REPLY_MAX_SCORING_AGE_MINUTES),
+        )
+    else:
+        cursor.execute(
+            """
+            SELECT id, handle, text, topic_hint, minutes_since_posted, likes, replies, reposts
+            FROM posts
+            WHERE fetch_mode = ?
+            ORDER BY id DESC
+            """,
+            (mode,),
+        )
 
     rows = cursor.fetchall()
 
     if not rows:
         conn.commit()
         conn.close()
-        print("⚠️ No hay posts recientes para puntuar.")
+        print(f"⚠️ No hay posts para puntuar en modo {mode}.")
         return
 
     scored_rows = []
 
     for row in rows:
         topic_relevance = score_topic_relevance(row["topic_hint"], row["text"])
-        early_engagement = score_early_engagement(
-            row["minutes_since_posted"],
-            row["likes"],
-            row["replies"],
-            row["reposts"],
-        )
-        reply_potential = score_reply_potential(row["text"])
 
-        final_score = round(
-            (topic_relevance * 0.4)
-            + (early_engagement * 0.25)
-            + (reply_potential * 0.35),
-            2,
-        )
+        if mode == "reply":
+            early_engagement = score_early_engagement(
+                row["minutes_since_posted"],
+                row["likes"],
+                row["replies"],
+                row["reposts"],
+            )
+            reply_potential = score_reply_potential(row["text"])
 
-        recommended_action = decide_action(final_score, reply_potential)
+            final_score = round(
+                (topic_relevance * 0.4)
+                + (early_engagement * 0.25)
+                + (reply_potential * 0.35),
+                2,
+            )
+
+            recommended_action = decide_action_reply(final_score, reply_potential)
+        else:
+            early_engagement = score_inspiration_signal(
+                row["minutes_since_posted"],
+                row["likes"],
+                row["replies"],
+                row["reposts"],
+            )
+            reply_potential = score_idea_density(row["text"])
+
+            final_score = round(
+                (topic_relevance * 0.40)
+                + (early_engagement * 0.20)
+                + (reply_potential * 0.40),
+                2,
+            )
+
+            recommended_action = decide_action_inspiration(final_score)
+
         priority = decide_priority(final_score)
 
         cursor.execute(
@@ -331,7 +492,7 @@ def main():
     conn.commit()
     conn.close()
 
-    print("✅ Posts puntuados correctamente.")
+    print(f"✅ Posts puntuados correctamente en modo {mode}.")
     for item in scored_rows:
         print(
             f"- {item['handle']} | score={item['score']} | acción={item['action']} | edad={item['age']}"

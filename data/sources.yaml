@@ -1,0 +1,21 @@
+sources:
+
+  - handle: naval
+    category: tech
+    weight: 1.0
+
+  - handle: paulgraham
+    category: startup
+    weight: 1.0
+
+  - handle: balajis
+    category: crypto
+    weight: 0.9
+
+  - handle: packyM
+    category: tech
+    weight: 0.8
+
+  - handle: shl
+    category: philosophy
+    weight: 0.8
